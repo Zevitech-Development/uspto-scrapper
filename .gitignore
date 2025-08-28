@@ -1,0 +1,54 @@
+# =========================
+# Global ignores
+# =========================
+node_modules/
+dist/
+build/
+coverage/
+logs/
+*.log
+*.log.*
+*.pid
+*.seed
+*.pid.lock
+*.tsbuildinfo
+*.tgz
+*.zip
+*.env
+.env.local
+.env.*.local
+
+# =========================
+# Client (Next.js)
+# =========================
+client/.next/
+client/out/
+client/build/
+client/.vercel/
+
+# Ignore Next.js cache
+client/.next/cache/
+
+# Local env files
+client/.env
+client/.env.local
+client/.env.*.local
+
+# =========================
+# Server (Node/Express)
+# =========================
+server/node_modules/
+server/dist/
+server/build/
+server/logs/
+server/.env
+
+# =========================
+# Editor / OS
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
