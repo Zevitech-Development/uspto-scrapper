@@ -392,7 +392,7 @@ export default function UploadPage() {
             <li className="flex items-start space-x-2">
               <span className="text-blue-600 mt-0.5">•</span>
               <span>
-                You'll receive real-time progress updates during processing
+                You&apos;ll receive real-time progress updates during processing
               </span>
             </li>
             <li className="flex items-start space-x-2">

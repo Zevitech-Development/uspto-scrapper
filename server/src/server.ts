@@ -240,16 +240,11 @@ class Server {
     });
   }
 
-  /**
-   * Get Express app instance
-   */
+
   public getApp(): express.Application {
     return this.app;
   }
 
-  /**
-   * Stop the server
-   */
   public async stop(): Promise<void> {
     if (this.server) {
       return new Promise((resolve) => {

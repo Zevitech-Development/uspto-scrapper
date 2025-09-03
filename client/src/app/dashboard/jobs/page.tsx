@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Clock,
@@ -85,65 +85,69 @@ export default function JobsPage() {
     return () => clearInterval(interval);
   }, [pollingJobs]);
 
-  const fetchJobs = async () => {
-    setState((prev) => ({ ...prev, loading: true, error: null }));
+ const fetchJobs = useCallback(async () => {
+  setState((prev) => ({ ...prev, loading: true, error: null }));
 
-    try {
-      let allJobs: ProcessingJob[] = [];
+  try {
+    let allJobs: ProcessingJob[] = [];
 
-      if (state.selectedStatus === "all") {
-        // Fetch all statuses
-        const [completed, processing, failed, pending] = await Promise.all([
-          ApiService.getJobsByStatus("completed"),
-          ApiService.getJobsByStatus("processing"),
-          ApiService.getJobsByStatus("failed"),
-          ApiService.getJobsByStatus("pending"),
-        ]);
+    if (state.selectedStatus === "all") {
+      // Fetch all statuses
+      const [completed, processing, failed, pending] = await Promise.all([
+        ApiService.getJobsByStatus("completed"),
+        ApiService.getJobsByStatus("processing"),
+        ApiService.getJobsByStatus("failed"),
+        ApiService.getJobsByStatus("pending"),
+      ]);
 
-        allJobs = [
-          ...(pending.data?.jobs || []),
-          ...(processing.data?.jobs || []),
-          ...(completed.data?.jobs || []),
-          ...(failed.data?.jobs || []),
-        ];
+      allJobs = [
+        ...(pending.data?.jobs || []),
+        ...(processing.data?.jobs || []),
+        ...(completed.data?.jobs || []),
+        ...(failed.data?.jobs || []),
+      ];
 
-        // Start polling for processing jobs
-        const processingJobIds =
-          processing.data?.jobs?.map((job) => job.id) || [];
-        const pendingJobIds = pending.data?.jobs?.map((job) => job.id) || [];
-        setPollingJobs(new Set([...processingJobIds, ...pendingJobIds]));
-      } else {
-        const response = await ApiService.getJobsByStatus(state.selectedStatus);
-        allJobs = response.data?.jobs || [];
+      // Start polling for processing jobs
+      const processingJobIds =
+        processing.data?.jobs?.map((job) => job.id) || [];
+      const pendingJobIds = pending.data?.jobs?.map((job) => job.id) || [];
+      setPollingJobs(new Set([...processingJobIds, ...pendingJobIds]));
+    } else {
+      const response = await ApiService.getJobsByStatus(state.selectedStatus);
+      allJobs = response.data?.jobs || [];
 
-        // Start polling if status is processing or pending
-        if (
-          state.selectedStatus === "processing" ||
-          state.selectedStatus === "pending"
-        ) {
-          setPollingJobs(new Set(allJobs.map((job) => job.id)));
-        }
+      // Start polling if status is processing or pending
+      if (
+        state.selectedStatus === "processing" ||
+        state.selectedStatus === "pending"
+      ) {
+        setPollingJobs(new Set(allJobs.map((job) => job.id)));
       }
-
-      // Sort by creation date (newest first)
-      allJobs.sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
-
-      setState((prev) => ({
-        ...prev,
-        jobs: allJobs,
-        loading: false,
-      }));
-    } catch (error) {
-      setState((prev) => ({
-        ...prev,
-        error: error instanceof Error ? error.message : "Failed to fetch jobs",
-        loading: false,
-      }));
     }
-  };
+
+    // Sort by creation date (newest first)
+    allJobs.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    setState((prev) => ({
+      ...prev,
+      jobs: allJobs,
+      loading: false,
+    }));
+  } catch (error) {
+    setState((prev) => ({
+      ...prev,
+      error: error instanceof Error ? error.message : "Failed to fetch jobs",
+      loading: false,
+    }));
+  }
+}, [state.selectedStatus]);
+
+useEffect(() => {
+  fetchJobs();
+}, [fetchJobs]);
 
   const getStatusBadge = (status: string) => {
     const baseClasses =
