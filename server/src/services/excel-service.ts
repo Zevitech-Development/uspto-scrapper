@@ -157,7 +157,7 @@ export class ExcelService {
         (header) =>
           header &&
           header.toString().toLowerCase().trim() ===
-            columnName.toLowerCase().trim()
+          columnName.toLowerCase().trim()
       );
 
       if (index === -1) {
@@ -299,13 +299,13 @@ export class ExcelService {
       // Prepare data for Excel
       const excelData = results.map((result) => ({
         "Serial Number": result.serialNumber,
-        "Mark Text": result.markText || "N/A",
+        "Mark": result.markText || "N/A",
         "Owner Name": result.ownerName || "N/A",
         "Owner Phone": result.ownerPhone || "N/A",
         "Owner Email": result.ownerEmail || "N/A",
         "Attorney Name": result.attorneyName || "N/A",
         "Filing Date": result.filingDate || "N/A",
-        "Abandon Date": result.abandonDate || "N/A",
+        "Date of Abandon": result.abandonDate || "N/A",
         "Abandon Reason": result.abandonReason || "N/A",
         Status: result.status,
         "Error Message": result.errorMessage || "",
