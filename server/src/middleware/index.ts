@@ -174,12 +174,12 @@ export const requestLogger = (
   const startTime = Date.now();
 
   // Log request start
-  logger.info("Request started", {
-    method: req.method,
-    path: req.path,
-    ip: req.ip,
-    userAgent: req.get("User-Agent"),
-  });
+  // logger.info("Request started", {
+  //   method: req.method,
+  //   path: req.path,
+  //   ip: req.ip,
+  //   userAgent: req.get("User-Agent"),
+  // });
 
   // Save original `end` method
   const originalEnd = res.end.bind(res);
@@ -187,13 +187,13 @@ export const requestLogger = (
   res.end = ((chunk?: any, encoding?: any, cb?: () => void) => {
     const duration = Date.now() - startTime;
 
-    logger.info("Request completed", {
-      method: req.method,
-      path: req.path,
-      statusCode: res.statusCode,
-      duration,
-      contentLength: res.get("content-length"),
-    });
+    // logger.info("Request completed", {
+    //   method: req.method,
+    //   path: req.path,
+    //   statusCode: res.statusCode,
+    //   duration,
+    //   contentLength: res.get("content-length"),
+    // });
 
     return originalEnd(chunk, encoding, cb);
   }) as typeof res.end;

@@ -48,12 +48,11 @@ export class JobQueueService {
   private createQueue(): Bull.Queue<JobData> {
     const queue = new Bull<JobData>("trademark-processing", {
       redis: {
-        port: 6379,
-        host: "deep-crappie-47918.upstash.io",
-        password:
-          "AbsuAAIncDEzN2UxNDNlNWQ3NWE0NzhmYTFhODBlYzEyZjU2NjE3OXAxNDc5MTg",
-        username: "default",
-        tls: {}, // 👈 this makes it work with Upstash
+        port: Number(process.env.REDIS_PORT), 
+        host: process.env.REDIS_HOST!,
+        username: process.env.REDIS_USERNAME!,
+        password: process.env.REDIS_PASSWORD!,
+        tls: {}, // Required for Upstash
       },
       defaultJobOptions: {
         removeOnComplete: 50,
@@ -644,15 +643,15 @@ export class JobQueueService {
         job,
         bullJob: bullJob
           ? {
-              id: bullJob.id,
-              state: await bullJob.getState(),
-              progress: bullJob.progress(),
-              attemptsMade: bullJob.attemptsMade,
-              timestamp: bullJob.timestamp,
-              processedOn: bullJob.processedOn,
-              finishedOn: bullJob.finishedOn,
-              failedReason: bullJob.failedReason,
-            }
+            id: bullJob.id,
+            state: await bullJob.getState(),
+            progress: bullJob.progress(),
+            attemptsMade: bullJob.attemptsMade,
+            timestamp: bullJob.timestamp,
+            processedOn: bullJob.processedOn,
+            finishedOn: bullJob.finishedOn,
+            failedReason: bullJob.failedReason,
+          }
           : null,
         queuePosition,
       };
