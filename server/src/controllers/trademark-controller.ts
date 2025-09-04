@@ -5,6 +5,7 @@ import { ExcelService } from "../services/excel-service";
 import { JobQueueService } from "../services/job-queue";
 import { USPTOService } from "../services/uspto-service";
 import { ApiResponse, AppError } from "../types/global-interface";
+import { Trademark } from "../models/trademark.model";
 
 export class TrademarkController {
   private excelService: ExcelService;
@@ -439,6 +440,113 @@ export class TrademarkController {
         success: true,
         data: result,
         message: "Trademark data retrieved successfully",
+      };
+
+      res.json(response);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public getTrademarks = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { page = 1, limit = 50, search } = req.query;
+      const pageNum = parseInt(page as string);
+      const limitNum = parseInt(limit as string);
+      const skip = (pageNum - 1) * limitNum;
+
+      let query: any = {};
+      if (search) {
+        query = {
+          $or: [
+            { serialNumber: { $regex: search, $options: "i" } },
+            { ownerName: { $regex: search, $options: "i" } },
+            { markText: { $regex: search, $options: "i" } },
+          ],
+        };
+      }
+
+      const [trademarks, total] = await Promise.all([
+        Trademark.find(query)
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limitNum)
+          .lean(),
+        Trademark.countDocuments(query),
+      ]);
+
+      const response: ApiResponse = {
+        success: true,
+        data: {
+          trademarks,
+          pagination: {
+            page: pageNum,
+            limit: limitNum,
+            total,
+            pages: Math.ceil(total / limitNum),
+          },
+        },
+        message: "Trademarks retrieved successfully",
+      };
+
+      res.json(response);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public getTrademarksByJobId = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { jobId } = req.params;
+      const { page = 1, limit = 50 } = req.query;
+      const pageNum = parseInt(page as string);
+      const limitNum = parseInt(limit as string);
+      const skip = (pageNum - 1) * limitNum;
+
+      // First get the job to get serial numbers
+      const job = await this.jobQueueService.getJobFromMongoDB(jobId);
+      if (!job) {
+        throw new AppError("Job not found", 404, "JOB_NOT_FOUND");
+      }
+
+      // Get trademarks for this job's serial numbers
+      const [trademarks, total] = await Promise.all([
+        Trademark.find({ serialNumber: { $in: job.serialNumbers } })
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limitNum)
+          .lean(),
+        Trademark.countDocuments({ serialNumber: { $in: job.serialNumbers } }),
+      ]);
+
+      const response: ApiResponse = {
+        success: true,
+        data: {
+          job: {
+            jobId: job.id,
+            status: job.status,
+            totalRecords: job.totalRecords,
+            processedRecords: job.processedRecords,
+            createdAt: job.createdAt,
+            completedAt: job.completedAt,
+          },
+          trademarks,
+          pagination: {
+            page: pageNum,
+            limit: limitNum,
+            total,
+            pages: Math.ceil(total / limitNum),
+          },
+        },
+        message: "Job trademarks retrieved successfully",
       };
 
       res.json(response);

@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { 
-  Users, 
-  Activity, 
-  FileText, 
-  CheckCircle, 
-  TrendingUp, 
+import {
+  Users,
+  Activity,
+  FileText,
+  CheckCircle,
+  TrendingUp,
   AlertCircle,
   Clock,
   Database,
@@ -148,7 +148,7 @@ const RecentUsers: React.FC = () => {
             </div>
             <span className={cn(
               "px-2 py-1 text-xs font-medium rounded-full",
-              user.role === 'admin' 
+              user.role === 'admin'
                 ? "bg-purple-100 text-purple-800"
                 : "bg-blue-100 text-blue-800"
             )}>
@@ -289,8 +289,8 @@ export const AdminOverview: React.FC = () => {
         <MetricCard
           title="Queue Jobs"
           value={queueStats ? (
-            queueStats.queue.waiting + 
-            queueStats.queue.active + 
+            queueStats.queue.waiting +
+            queueStats.queue.active +
             queueStats.queue.delayed
           ) : 0}
           icon={Clock}
@@ -304,33 +304,7 @@ export const AdminOverview: React.FC = () => {
         />
       </div>
 
-      {/* Quick Actions */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <button className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-            <Plus className="w-5 h-5 text-blue-600 mr-3" />
-            <div className="text-left">
-              <p className="font-medium text-gray-900">Add User</p>
-              <p className="text-sm text-gray-500">Create new user account</p>
-            </div>
-          </button>
-          <button className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-            <Eye className="w-5 h-5 text-green-600 mr-3" />
-            <div className="text-left">
-              <p className="font-medium text-gray-900">View Jobs</p>
-              <p className="text-sm text-gray-500">Monitor processing queue</p>
-            </div>
-          </button>
-          <button className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-            <Settings className="w-5 h-5 text-purple-600 mr-3" />
-            <div className="text-left">
-              <p className="font-medium text-gray-900">System Settings</p>
-              <p className="text-sm text-gray-500">Configure system parameters</p>
-            </div>
-          </button>
-        </div>
-      </div>
+
 
       {/* Bottom Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

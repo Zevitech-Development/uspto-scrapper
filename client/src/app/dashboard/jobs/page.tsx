@@ -15,11 +15,13 @@ import {
   Calendar,
   User,
   Loader2,
+  Database,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import ApiService, { ProcessingJob } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout";
+import TrademarkSidebar from "@/components/TrademarkSidebar";
 
 interface JobsState {
   jobs: ProcessingJob[];
@@ -27,6 +29,8 @@ interface JobsState {
   error: string | null;
   selectedStatus: "all" | "pending" | "processing" | "completed" | "failed";
   highlightedJobId?: string;
+  selectedJobId: string | null;
+  sidebarOpen: boolean;
 }
 
 export default function JobsPage() {
@@ -40,6 +44,8 @@ export default function JobsPage() {
     error: null,
     selectedStatus: "all",
     highlightedJobId: highlightedJobId || undefined,
+    selectedJobId: null,
+    sidebarOpen: false,
   });
 
   const [pollingJobs, setPollingJobs] = useState<Set<string>>(new Set());
@@ -235,6 +241,22 @@ useEffect(() => {
       console.error("Retry failed:", error);
       alert("Failed to retry job. Please try again.");
     }
+  };
+
+  const handleViewDetails = (jobId: string) => {
+    setState(prev => ({
+      ...prev,
+      selectedJobId: jobId,
+      sidebarOpen: true,
+    }));
+  };
+
+  const handleCloseSidebar = () => {
+    setState(prev => ({
+      ...prev,
+      selectedJobId: null,
+      sidebarOpen: false,
+    }));
   };
 
   const statusFilters = [
@@ -480,6 +502,7 @@ useEffect(() => {
                     {/* Action Buttons */}
                     <div className="flex items-center space-x-2 ml-4">
                       <button
+                        onClick={() => handleViewDetails(job.id)}
                         className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100"
                         title="View Details"
                       >
@@ -514,6 +537,13 @@ useEffect(() => {
           )}
         </div>
       </div>
+      
+      {/* Job Details Sidebar */}
+      <TrademarkSidebar
+        isOpen={state.sidebarOpen}
+        jobId={state.selectedJobId}
+        onClose={handleCloseSidebar}
+      />
     </DashboardLayout>
   );
 }
