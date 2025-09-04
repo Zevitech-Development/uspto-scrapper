@@ -6,18 +6,20 @@ import {
   Clock,
   CheckCircle,
   AlertCircle,
+  Download,
   Eye,
   RotateCcw,
   X,
+  Play,
   FileText,
   Calendar,
+  User,
   Loader2,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import ApiService, { ProcessingJob } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout";
-import TrademarkSidebar from "@/components/TrademarkSidebar";
 
 interface JobsState {
   jobs: ProcessingJob[];
@@ -25,8 +27,6 @@ interface JobsState {
   error: string | null;
   selectedStatus: "all" | "pending" | "processing" | "completed" | "failed";
   highlightedJobId?: string;
-  selectedJobId: string | null;
-  sidebarOpen: boolean;
 }
 
 export default function JobsPage() {
@@ -40,8 +40,6 @@ export default function JobsPage() {
     error: null,
     selectedStatus: "all",
     highlightedJobId: highlightedJobId || undefined,
-    selectedJobId: null,
-    sidebarOpen: false,
   });
 
   const [pollingJobs, setPollingJobs] = useState<Set<string>>(new Set());
@@ -62,12 +60,7 @@ export default function JobsPage() {
             setState((prev) => ({
               ...prev,
               jobs: prev.jobs.map((job) =>
-                job.id === jobId && response.data ? {
-                  ...job,
-                  status: response.data.status,
-                  processedRecords: response.data.progress?.processed || job.processedRecords,
-                  results: response.data.results || job.results
-                } : job
+                job.id === jobId ? { ...job, ...response.data } : job
               ),
             }));
 
@@ -87,74 +80,74 @@ export default function JobsPage() {
           console.error(`Failed to update job ${jobId}:`, error);
         }
       });
-    }, 2000); // Poll every 3 seconds
+    }, 3000); // Poll every 3 seconds
 
     return () => clearInterval(interval);
   }, [pollingJobs]);
 
-  const fetchJobs = useCallback(async () => {
-    setState((prev) => ({ ...prev, loading: true, error: null }));
+ const fetchJobs = useCallback(async () => {
+  setState((prev) => ({ ...prev, loading: true, error: null }));
 
-    try {
-      let allJobs: ProcessingJob[] = [];
+  try {
+    let allJobs: ProcessingJob[] = [];
 
-      if (state.selectedStatus === "all") {
-        // Fetch all statuses
-        const [completed, processing, failed, pending] = await Promise.all([
-          ApiService.getJobsByStatus("completed"),
-          ApiService.getJobsByStatus("processing"),
-          ApiService.getJobsByStatus("failed"),
-          ApiService.getJobsByStatus("pending"),
-        ]);
+    if (state.selectedStatus === "all") {
+      // Fetch all statuses
+      const [completed, processing, failed, pending] = await Promise.all([
+        ApiService.getJobsByStatus("completed"),
+        ApiService.getJobsByStatus("processing"),
+        ApiService.getJobsByStatus("failed"),
+        ApiService.getJobsByStatus("pending"),
+      ]);
 
-        allJobs = [
-          ...(pending.data?.jobs || []),
-          ...(processing.data?.jobs || []),
-          ...(completed.data?.jobs || []),
-          ...(failed.data?.jobs || []),
-        ];
+      allJobs = [
+        ...(pending.data?.jobs || []),
+        ...(processing.data?.jobs || []),
+        ...(completed.data?.jobs || []),
+        ...(failed.data?.jobs || []),
+      ];
 
-        // Start polling for processing jobs
-        const processingJobIds =
-          processing.data?.jobs?.map((job) => job.id) || [];
-        const pendingJobIds = pending.data?.jobs?.map((job) => job.id) || [];
-        setPollingJobs(new Set([...processingJobIds, ...pendingJobIds]));
-      } else {
-        const response = await ApiService.getJobsByStatus(state.selectedStatus);
-        allJobs = response.data?.jobs || [];
+      // Start polling for processing jobs
+      const processingJobIds =
+        processing.data?.jobs?.map((job) => job.id) || [];
+      const pendingJobIds = pending.data?.jobs?.map((job) => job.id) || [];
+      setPollingJobs(new Set([...processingJobIds, ...pendingJobIds]));
+    } else {
+      const response = await ApiService.getJobsByStatus(state.selectedStatus);
+      allJobs = response.data?.jobs || [];
 
-        // Start polling if status is processing or pending
-        if (
-          state.selectedStatus === "processing" ||
-          state.selectedStatus === "pending"
-        ) {
-          setPollingJobs(new Set(allJobs.map((job) => job.id)));
-        }
+      // Start polling if status is processing or pending
+      if (
+        state.selectedStatus === "processing" ||
+        state.selectedStatus === "pending"
+      ) {
+        setPollingJobs(new Set(allJobs.map((job) => job.id)));
       }
-
-      // Sort by creation date (newest first)
-      allJobs.sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
-
-      setState((prev) => ({
-        ...prev,
-        jobs: allJobs,
-        loading: false,
-      }));
-    } catch (error) {
-      setState((prev) => ({
-        ...prev,
-        error: error instanceof Error ? error.message : "Failed to fetch jobs",
-        loading: false,
-      }));
     }
-  }, [state.selectedStatus]);
 
-  useEffect(() => {
-    fetchJobs();
-  }, [fetchJobs]);
+    // Sort by creation date (newest first)
+    allJobs.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    setState((prev) => ({
+      ...prev,
+      jobs: allJobs,
+      loading: false,
+    }));
+  } catch (error) {
+    setState((prev) => ({
+      ...prev,
+      error: error instanceof Error ? error.message : "Failed to fetch jobs",
+      loading: false,
+    }));
+  }
+}, [state.selectedStatus]);
+
+useEffect(() => {
+  fetchJobs();
+}, [fetchJobs]);
 
   const getStatusBadge = (status: string) => {
     const baseClasses =
@@ -242,22 +235,6 @@ export default function JobsPage() {
       console.error("Retry failed:", error);
       alert("Failed to retry job. Please try again.");
     }
-  };
-
-  const handleViewDetails = (jobId: string) => {
-    setState(prev => ({
-      ...prev,
-      selectedJobId: jobId,
-      sidebarOpen: true,
-    }));
-  };
-
-  const handleCloseSidebar = () => {
-    setState(prev => ({
-      ...prev,
-      selectedJobId: null,
-      sidebarOpen: false,
-    }));
   };
 
   const statusFilters = [
@@ -355,7 +332,7 @@ export default function JobsPage() {
                   className={cn(
                     "p-6 hover:bg-gray-50 transition-colors",
                     state.highlightedJobId === job.id &&
-                    "bg-blue-50 border-l-4 border-blue-500"
+                      "bg-blue-50 border-l-4 border-blue-500"
                   )}
                 >
                   <div className="flex items-center justify-between">
@@ -392,30 +369,31 @@ export default function JobsPage() {
                       {/* Progress Bar for Processing Jobs */}
                       {(job.status === "processing" ||
                         job.status === "pending") && (
-                          <div className="mt-3">
-                            <div className="flex justify-between text-sm text-gray-600 mb-1">
-                              <span>Progress</span>
-                              <span>
-                                {job.processedRecords}/{job.totalRecords}
-                              </span>
-                            </div>
-                            <div className="w-full bg-gray-200 rounded-full h-2">
-                              <div
-                                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                                style={{
-                                  width: `${job.totalRecords > 0
-                                    ? Math.round(
-                                      (job.processedRecords /
-                                        job.totalRecords) *
-                                      100
-                                    )
-                                    : 0
-                                    }%`,
-                                }}
-                              />
-                            </div>
+                        <div className="mt-3">
+                          <div className="flex justify-between text-sm text-gray-600 mb-1">
+                            <span>Progress</span>
+                            <span>
+                              {job.processedRecords}/{job.totalRecords}
+                            </span>
                           </div>
-                        )}
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                              style={{
+                                width: `${
+                                  job.totalRecords > 0
+                                    ? Math.round(
+                                        (job.processedRecords /
+                                          job.totalRecords) *
+                                          100
+                                      )
+                                    : 0
+                                }%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
 
                       {/* Error Message */}
                       {job.status === "failed" && job.errorMessage && (
@@ -471,12 +449,13 @@ export default function JobsPage() {
                                     </td>
                                     <td className="px-3 py-2">
                                       <span
-                                        className={`px-2 py-1 text-xs rounded-full ${result.status === "success"
-                                          ? "bg-green-100 text-green-800"
-                                          : result.status === "not_found"
+                                        className={`px-2 py-1 text-xs rounded-full ${
+                                          result.status === "success"
+                                            ? "bg-green-100 text-green-800"
+                                            : result.status === "not_found"
                                             ? "bg-yellow-100 text-yellow-800"
                                             : "bg-red-100 text-red-800"
-                                          }`}
+                                        }`}
                                       >
                                         {result.status}
                                       </span>
@@ -501,7 +480,6 @@ export default function JobsPage() {
                     {/* Action Buttons */}
                     <div className="flex items-center space-x-2 ml-4">
                       <button
-                        onClick={() => handleViewDetails(job.id)}
                         className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100"
                         title="View Details"
                       >
@@ -520,14 +498,14 @@ export default function JobsPage() {
 
                       {(job.status === "pending" ||
                         job.status === "processing") && (
-                          <button
-                            onClick={() => handleCancelJob(job.id)}
-                            className="p-2 text-red-600 hover:text-red-700 rounded-full hover:bg-red-50"
-                            title="Cancel Job"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        )}
+                        <button
+                          onClick={() => handleCancelJob(job.id)}
+                          className="p-2 text-red-600 hover:text-red-700 rounded-full hover:bg-red-50"
+                          title="Cancel Job"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -536,13 +514,6 @@ export default function JobsPage() {
           )}
         </div>
       </div>
-
-      {/* Job Details Sidebar */}
-      <TrademarkSidebar
-        isOpen={state.sidebarOpen}
-        jobId={state.selectedJobId}
-        onClose={handleCloseSidebar}
-      />
     </DashboardLayout>
   );
 }

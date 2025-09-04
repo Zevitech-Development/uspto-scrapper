@@ -10,7 +10,7 @@ interface ApiResponse<T = any> {
 
 interface TrademarkData {
   serialNumber: string;
-  markText: string | null;
+   markText: string | null;
   ownerName: string | null;
   ownerPhone: string | null;
   ownerEmail: string | null;
@@ -364,74 +364,6 @@ class ApiService {
         uspto: { status: string; message: string };
       };
     }>(response);
-  }
-
-  // Trademark data endpoints
-  static async getTrademarks(params?: {
-    page?: number;
-    limit?: number;
-    search?: string;
-  }) {
-    const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.append('page', params.page.toString());
-    if (params?.limit) searchParams.append('limit', params.limit.toString());
-    if (params?.search) searchParams.append('search', params.search);
-
-    const response = await fetch(
-      `${API_BASE_URL}/trademarks?${searchParams.toString()}`,
-      {
-        headers: this.getAuthHeaders(),
-      }
-    );
-    return this.handleResponse<
-      ApiResponse<{
-        trademarks: TrademarkData[];
-        pagination: {
-          page: number;
-          limit: number;
-          total: number;
-          pages: number;
-        };
-      }>
-    >(response);
-  }
-
-  static async getTrademarksByJobId(
-    jobId: string,
-    params?: {
-      page?: number;
-      limit?: number;
-    }
-  ) {
-    const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.append('page', params.page.toString());
-    if (params?.limit) searchParams.append('limit', params.limit.toString());
-
-    const response = await fetch(
-      `${API_BASE_URL}/trademarks/job/${jobId}?${searchParams.toString()}`,
-      {
-        headers: this.getAuthHeaders(),
-      }
-    );
-    return this.handleResponse<
-      ApiResponse<{
-        job: {
-          jobId: string;
-          status: string;
-          totalRecords: number;
-          processedRecords: number;
-          createdAt: string;
-          completedAt?: string;
-        };
-        trademarks: TrademarkData[];
-        pagination: {
-          page: number;
-          limit: number;
-          total: number;
-          pages: number;
-        };
-      }>
-    >(response);
   }
 }
 

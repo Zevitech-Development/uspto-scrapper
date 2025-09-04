@@ -8,10 +8,10 @@ import {
   BarChart3,
   Upload,
   Clock,
-  // TrendingUp,
-  // Users,
-  // Settings,
-  // LogOut,
+  TrendingUp,
+  Users,
+  Settings,
+  LogOut,
   Building2,
   X
 } from 'lucide-react';
@@ -40,38 +40,38 @@ const getMenuItems = (userRole: 'admin' | 'user'): MenuItem[] => {
     },
   ];
 
-  // if (userRole === 'admin') {
-  //   return [
-  //     ...commonItems,
-  //     {
-  //       id: 'analytics',
-  //       label: 'Analytics',
-  //       icon: TrendingUp,
-  //       href: '/dashboard/analytics',
-  //     },
-  //     {
-  //       id: 'users',
-  //       label: 'User Management',
-  //       icon: Users,
-  //       href: '/dashboard/users',
-  //     },
-  //     {
-  //       id: 'settings',
-  //       label: 'System Settings',
-  //       icon: Settings,
-  //       href: '/dashboard/settings',
-  //     },
-  //   ];
-  // }
+  if (userRole === 'admin') {
+    return [
+      ...commonItems,
+      {
+        id: 'analytics',
+        label: 'Analytics',
+        icon: TrendingUp,
+        href: '/dashboard/analytics',
+      },
+      {
+        id: 'users',
+        label: 'User Management',
+        icon: Users,
+        href: '/dashboard/users',
+      },
+      {
+        id: 'settings',
+        label: 'System Settings',
+        icon: Settings,
+        href: '/dashboard/settings',
+      },
+    ];
+  }
 
   return [
     ...commonItems,
-    // {
-    //   id: 'settings',
-    //   label: 'Settings',
-    //   icon: Settings,
-    //   href: '/dashboard/settings',
-    // },
+    {
+      id: 'settings',
+      label: 'Settings',
+      icon: Settings,
+      href: '/dashboard/settings',
+    },
   ];
 };
 

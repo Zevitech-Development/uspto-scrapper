@@ -84,10 +84,6 @@ router.post("/jobs/:jobId/retry", trademarkController.retryJob);
 // Single trademark lookup (rate limited)
 router.get("/trademark/:serialNumber", trademarkController.getSingleTrademark);
 
-// Trademark data routes (rate limited)
-router.get("/trademarks", trademarkController.getTrademarks);
-router.get("/trademarks/job/:jobId", trademarkController.getTrademarksByJobId);
-
 // Error handling middleware
 router.use(errorHandler);
 
