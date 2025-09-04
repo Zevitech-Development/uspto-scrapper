@@ -207,9 +207,10 @@ export class JobQueueService {
           job.progress({
             processed,
             total,
+            percentage: Math.round((processed / total) * 100),
             currentSerial: serialNumbers[processed - 1],
           });
-          
+
           // Update stored job progress in Redis and MongoDB
           await this.updateJobProgress(jobId, processed, total);
         }
@@ -337,6 +338,16 @@ export class JobQueueService {
       await this.updateJobStatus(jobId, "processing", {
         processedRecords: processed,
       });
+
+      const bullJobId = `trademark-job-${jobId}`;
+      const bullJob = await this.queue.getJob(bullJobId);
+      if (bullJob) {
+        await bullJob.progress({
+          processed,
+          total,
+          percentage: Math.round((processed / total) * 100)
+        });
+      }
     } catch (error) {
       logger.error("Failed to update job progress", error as Error, {
         jobId,
@@ -503,15 +514,15 @@ export class JobQueueService {
     try {
       // First try to get jobs from MongoDB as primary source
       const mongoJobs = await ProcessingJobModel.find({ status }).sort({ createdAt: -1 });
-      
+
       if (mongoJobs.length > 0) {
         const jobs: ProcessingJob[] = [];
-        
+
         for (const mongoJob of mongoJobs) {
           const trademarkResults = await Trademark.find({
             serialNumber: { $in: mongoJob.serialNumbers },
           });
-          
+
           jobs.push({
             id: mongoJob.jobId,
             serialNumbers: mongoJob.serialNumbers,
@@ -536,10 +547,10 @@ export class JobQueueService {
             errorMessage: mongoJob.errorMessage,
           });
         }
-        
+
         return jobs;
       }
-      
+
       // Fallback to Redis if MongoDB is empty
       const jobs: ProcessingJob[] = [];
       const jobKeys = await this.redis.keys("job:*");
@@ -693,15 +704,15 @@ export class JobQueueService {
         job,
         bullJob: bullJob
           ? {
-              id: bullJob.id,
-              state: await bullJob.getState(),
-              progress: bullJob.progress(),
-              attemptsMade: bullJob.attemptsMade,
-              timestamp: bullJob.timestamp,
-              processedOn: bullJob.processedOn,
-              finishedOn: bullJob.finishedOn,
-              failedReason: bullJob.failedReason,
-            }
+            id: bullJob.id,
+            state: await bullJob.getState(),
+            progress: bullJob.progress(),
+            attemptsMade: bullJob.attemptsMade,
+            timestamp: bullJob.timestamp,
+            processedOn: bullJob.processedOn,
+            finishedOn: bullJob.finishedOn,
+            failedReason: bullJob.failedReason,
+          }
           : null,
         queuePosition,
       };

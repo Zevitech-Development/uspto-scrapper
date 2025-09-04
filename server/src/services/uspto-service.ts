@@ -263,12 +263,12 @@ export class USPTOService {
         const result = await this.fetchTrademarkData(serialNumber);
         results.push(result);
 
-        // Call progress callback if provided
+        // IMPORTANT: Call progress callback IMMEDIATELY after each result
         if (onProgress) {
           onProgress(i + 1, total);
         }
 
-        // Rate limiting: wait between requests to respect USPTO limits
+        // Rate limiting: wait between requests
         if (i < serialNumbers.length - 1) {
           await this.waitForRateLimit();
         }
@@ -279,7 +279,6 @@ export class USPTOService {
           total,
         });
 
-        // Add error result and continue
         results.push({
           serialNumber,
           ownerName: null,
@@ -293,7 +292,17 @@ export class USPTOService {
           status: "error",
           errorMessage: "Unexpected error during processing",
         });
+
+        // Still call progress callback even on error
+        if (onProgress) {
+          onProgress(i + 1, total);
+        }
       }
+    }
+
+    // Final progress update
+    if (onProgress) {
+      onProgress(total, total);
     }
 
     logger.info("Completed batch trademark fetch", {
