@@ -58,7 +58,10 @@ export class TrademarkController {
       }
 
       // Add job to queue
-      const jobId = await this.jobQueueService.addTrademarkJob(parseResult.serialNumbers, (req as any).user.id);
+      const jobId = await this.jobQueueService.addTrademarkJob(
+        parseResult.serialNumbers,
+        (req as any).user.id
+      );
 
       const response: ApiResponse = {
         success: true,
@@ -110,7 +113,10 @@ export class TrademarkController {
       });
 
       // Add job to queue
-      const jobId = await this.jobQueueService.addTrademarkJob(serialNumbers, (req as any).user.id);
+      const jobId = await this.jobQueueService.addTrademarkJob(
+        serialNumbers,
+        (req as any).user.id
+      );
 
       const response: ApiResponse = {
         success: true,
@@ -279,7 +285,7 @@ export class TrademarkController {
 
       if (!job.results || job.results.length === 0) {
         const response: ApiResponse = {
-          success: false, 
+          success: false,
           message: "No results available for download",
           error: "No results available",
         };

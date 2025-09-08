@@ -42,13 +42,10 @@ export class JobQueueService {
     return JobQueueService.instance;
   }
 
-  /**
-   * Create Bull queue for processing trademark jobs
-   */
   private createQueue(): Bull.Queue<JobData> {
     const queue = new Bull<JobData>("trademark-processing", {
       redis: {
-        port: Number(process.env.REDIS_PORT), 
+        port: Number(process.env.REDIS_PORT),
         host: process.env.REDIS_HOST!,
         username: process.env.REDIS_USERNAME!,
         password: process.env.REDIS_PASSWORD!,
@@ -68,9 +65,6 @@ export class JobQueueService {
     return queue;
   }
 
-  /**
-   * Set up job processors and event listeners
-   */
   private setupJobProcessors(): void {
     // Process jobs with concurrency of 1 to respect rate limits
     this.queue.process(
@@ -88,8 +82,14 @@ export class JobQueueService {
         totalRecords: job.data.serialNumbers.length,
       });
 
-      // Force update Redis job status to completed
-      await this.updateJobStatus(job.data.jobId, "completed");
+      const mongoJob = await this.getJobFromMongoDB(job.data.jobId);
+      if (mongoJob) {
+        await this.updateJobStatus(job.data.jobId, "completed", {
+          results: mongoJob.results,
+          completedAt: mongoJob.completedAt,
+          processedRecords: mongoJob.processedRecords,
+        });
+      }
     });
 
     this.queue.on("failed", async (job, error) => {
@@ -128,9 +128,6 @@ export class JobQueueService {
     });
   }
 
-  /**
-   * Add a new trademark processing job to the queue
-   */
   public async addTrademarkJob(
     serialNumbers: string[],
     userId: string
@@ -181,9 +178,6 @@ export class JobQueueService {
     }
   }
 
-  /**
-   * Process a trademark job (Bull job processor)
-   */
   private async processTrademarkJob(job: Bull.Job<JobData>): Promise<void> {
     const { jobId, serialNumbers } = job.data;
     const startTime = Date.now();
@@ -218,6 +212,7 @@ export class JobQueueService {
       await this.updateJobStatus(jobId, "completed", {
         results,
         completedAt: new Date(),
+        processedRecords: serialNumbers.length,
       });
 
       await this.saveTrademarkDataToMongoDB(results);
@@ -235,9 +230,6 @@ export class JobQueueService {
     }
   }
 
-  /**
-   * Get job status and results
-   */
   public async getJobStatus(jobId: string): Promise<ProcessingJob | null> {
     try {
       let job = this.jobs.get(jobId);
@@ -254,6 +246,21 @@ export class JobQueueService {
         job = (await this.getJobFromMongoDB(jobId)) || undefined;
       }
 
+      if (
+        job &&
+        (!job.results || job.results.length === 0) &&
+        job.status === "completed"
+      ) {
+        const mongoJob = await this.getJobFromMongoDB(jobId);
+        if (mongoJob && mongoJob.results && mongoJob.results.length > 0) {
+          job.results = mongoJob.results;
+
+          // Update Redis with complete data
+          await this.redis.setex(`job:${jobId}`, 604800, JSON.stringify(job));
+          this.jobs.set(jobId, job);
+        }
+      }
+
       return job || null;
     } catch (error) {
       logger.error("Failed to get job status", error as Error, { jobId });
@@ -261,9 +268,6 @@ export class JobQueueService {
     }
   }
 
-  /**
-   * Update job status in memory and Redis
-   */
   private async updateJobStatus(
     jobId: string,
     status: ProcessingJob["status"],
@@ -297,15 +301,21 @@ export class JobQueueService {
         JSON.stringify(updatedJob)
       );
 
-      await ProcessingJobModel.updateOne(
-        { jobId },
-        {
-          status,
-          processedRecords:
-            updates.processedRecords || existingJob.processedRecords,
-          completedAt: updates.completedAt,
-        }
-      );
+      const mongoUpdates: any = {
+        status,
+        processedRecords:
+          updates.processedRecords || existingJob.processedRecords,
+      };
+
+      if (updates.completedAt) {
+        mongoUpdates.completedAt = updates.completedAt;
+      }
+
+      if (updates.errorMessage) {
+        mongoUpdates.errorMessage = updates.errorMessage;
+      }
+
+      await ProcessingJobModel.updateOne({ jobId }, mongoUpdates);
     } catch (error) {
       logger.error("Failed to update job status", error as Error, {
         jobId,
@@ -313,9 +323,7 @@ export class JobQueueService {
       });
     }
   }
-  /**
-   * Update job progress
-   */
+
   private async updateJobProgress(
     jobId: string,
     processed: number,
@@ -372,9 +380,6 @@ export class JobQueueService {
     }
   }
 
-  /**
-   * Get job queue statistics
-   */
   public async getQueueStats(): Promise<{
     waiting: number;
     active: number;
@@ -410,9 +415,6 @@ export class JobQueueService {
     }
   }
 
-  /**
-   * Cancel a job if it's still pending
-   */
   public async cancelJob(jobId: string): Promise<boolean> {
     try {
       const bullJobId = `trademark-job-${jobId}`;
@@ -444,9 +446,6 @@ export class JobQueueService {
     }
   }
 
-  /**
-   * Retry a failed job
-   */
   public async retryJob(jobId: string): Promise<boolean> {
     try {
       const job = await this.getJobStatus(jobId);
@@ -482,9 +481,6 @@ export class JobQueueService {
     }
   }
 
-  /**
-   * Get all jobs for a specific status
-   */
   public async getJobsByStatus(
     status: ProcessingJob["status"]
   ): Promise<ProcessingJob[]> {
@@ -518,9 +514,6 @@ export class JobQueueService {
     }
   }
 
-  /**
-   * Clean up old completed jobs
-   */
   public async cleanupOldJobs(olderThanHours: number = 24): Promise<number> {
     try {
       const cutoffTime = new Date(Date.now() - olderThanHours * 60 * 60 * 1000);
@@ -564,9 +557,6 @@ export class JobQueueService {
     }
   }
 
-  /**
-   * Get job processing rate info
-   */
   public getProcessingInfo(): {
     rateLimitPerMinute: number;
     estimatedTimeFor100Records: string;
@@ -581,9 +571,6 @@ export class JobQueueService {
     };
   }
 
-  /**
-   * Pause the queue
-   */
   public async pauseQueue(): Promise<void> {
     try {
       await this.queue.pause();
@@ -594,9 +581,6 @@ export class JobQueueService {
     }
   }
 
-  /**
-   * Resume the queue
-   */
   public async resumeQueue(): Promise<void> {
     try {
       await this.queue.resume();
@@ -607,9 +591,6 @@ export class JobQueueService {
     }
   }
 
-  /**
-   * Check if queue is paused
-   */
   public async isQueuePaused(): Promise<boolean> {
     try {
       return await this.queue.isPaused();
@@ -619,9 +600,6 @@ export class JobQueueService {
     }
   }
 
-  /**
-   * Get detailed job information including Bull job data
-   */
   public async getDetailedJobInfo(jobId: string): Promise<{
     job: ProcessingJob | null;
     bullJob: any;
@@ -643,15 +621,15 @@ export class JobQueueService {
         job,
         bullJob: bullJob
           ? {
-            id: bullJob.id,
-            state: await bullJob.getState(),
-            progress: bullJob.progress(),
-            attemptsMade: bullJob.attemptsMade,
-            timestamp: bullJob.timestamp,
-            processedOn: bullJob.processedOn,
-            finishedOn: bullJob.finishedOn,
-            failedReason: bullJob.failedReason,
-          }
+              id: bullJob.id,
+              state: await bullJob.getState(),
+              progress: bullJob.progress(),
+              attemptsMade: bullJob.attemptsMade,
+              timestamp: bullJob.timestamp,
+              processedOn: bullJob.processedOn,
+              finishedOn: bullJob.finishedOn,
+              failedReason: bullJob.failedReason,
+            }
           : null,
         queuePosition,
       };
@@ -663,9 +641,6 @@ export class JobQueueService {
     }
   }
 
-  /**
-   * Gracefully shutdown the queue service
-   */
   public async shutdown(): Promise<void> {
     try {
       logger.info("Shutting down job queue service");
@@ -723,9 +698,6 @@ export class JobQueueService {
     }
   }
 
-  /**
-   * Health check for queue service
-   */
   public async healthCheck(): Promise<{
     status: "healthy" | "unhealthy";
     details: any;
