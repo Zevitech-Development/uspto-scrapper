@@ -33,6 +33,7 @@ export class JobQueueService {
     this.usptoService = new USPTOService();
     this.queue = this.createQueue();
     this.setupJobProcessors();
+    this.setupMemoryCleanup();
   }
 
   public static getInstance(): JobQueueService {
@@ -49,16 +50,22 @@ export class JobQueueService {
         host: process.env.REDIS_HOST!,
         username: process.env.REDIS_USERNAME!,
         password: process.env.REDIS_PASSWORD!,
-        tls: {}, // Required for Upstash
+        tls: {},
+        maxRetriesPerRequest: 3,
+      },
+      settings: {
+        stalledInterval: 30 * 1000, // 30 seconds instead of default 30s
+        maxStalledCount: 1,
       },
       defaultJobOptions: {
-        removeOnComplete: 50,
-        removeOnFail: 100,
-        attempts: 3,
+        removeOnComplete: 10,
+        removeOnFail: 5,
+        attempts: 2,
         backoff: {
           type: "exponential",
           delay: 5000,
         },
+        timeout: 24 * 60 * 60 * 1000,
       },
     });
 
@@ -82,12 +89,29 @@ export class JobQueueService {
         totalRecords: job.data.serialNumbers.length,
       });
 
+      // Get complete job data from MongoDB
       const mongoJob = await this.getJobFromMongoDB(job.data.jobId);
       if (mongoJob) {
-        await this.updateJobStatus(job.data.jobId, "completed", {
-          results: mongoJob.results,
-          completedAt: mongoJob.completedAt,
-          processedRecords: mongoJob.processedRecords,
+        // Update both Redis and memory cache with complete data
+        const completeJobData = {
+          ...mongoJob,
+          status: "completed" as const,
+          completedAt: mongoJob.completedAt || new Date(),
+        };
+
+        // Update memory cache
+        this.jobs.set(job.data.jobId, completeJobData);
+
+        // Update Redis cache
+        await this.redis.setex(
+          `job:${job.data.jobId}`,
+          604800, // 7 days
+          JSON.stringify(completeJobData)
+        );
+
+        logger.info("Job cache updated with complete data", {
+          jobId: job.data.jobId,
+          totalRecords: mongoJob.results?.length || 0,
         });
       }
     });
@@ -232,36 +256,56 @@ export class JobQueueService {
 
   public async getJobStatus(jobId: string): Promise<ProcessingJob | null> {
     try {
+      // Check memory first
       let job = this.jobs.get(jobId);
 
-      if (!job) {
-        const jobData = await this.redis.get(`job:${jobId}`);
-        if (jobData) {
-          job = JSON.parse(jobData);
-        }
-      }
-
-      // If not in Redis, check MongoDB
-      if (!job) {
-        job = (await this.getJobFromMongoDB(jobId)) || undefined;
-      }
-
+      // If job is in memory but missing results and is completed, sync from MongoDB
       if (
         job &&
-        (!job.results || job.results.length === 0) &&
-        job.status === "completed"
+        job.status === "completed" &&
+        (!job.results || job.results.length === 0)
       ) {
         const mongoJob = await this.getJobFromMongoDB(jobId);
         if (mongoJob && mongoJob.results && mongoJob.results.length > 0) {
-          job.results = mongoJob.results;
-
-          // Update Redis with complete data
-          await this.redis.setex(`job:${jobId}`, 604800, JSON.stringify(job));
+          job = mongoJob;
           this.jobs.set(jobId, job);
+          await this.redis.setex(`job:${jobId}`, 604800, JSON.stringify(job));
         }
       }
 
-      return job || null;
+      if (job) {
+        return job;
+      }
+
+      // Check Redis
+      const jobData = await this.redis.get(`job:${jobId}`);
+      if (jobData) {
+        job = JSON.parse(jobData) as ProcessingJob;
+
+        // If Redis job is completed but missing results, get from MongoDB
+        if (
+          job.status === "completed" &&
+          (!job.results || job.results.length === 0)
+        ) {
+          const mongoJob = await this.getJobFromMongoDB(jobId);
+          if (mongoJob && mongoJob.results && mongoJob.results.length > 0) {
+            job = mongoJob;
+          }
+        }
+
+        this.jobs.set(jobId, job);
+        return job;
+      }
+
+      // Last resort: MongoDB
+      const mongoJob = await this.getJobFromMongoDB(jobId);
+      if (mongoJob) {
+        this.jobs.set(jobId, mongoJob);
+        await this.redis.setex(`job:${jobId}`, 3600, JSON.stringify(mongoJob));
+        return mongoJob;
+      }
+
+      return null;
     } catch (error) {
       logger.error("Failed to get job status", error as Error, { jobId });
       return null;
@@ -295,27 +339,36 @@ export class JobQueueService {
       this.jobs.set(jobId, updatedJob);
 
       // Then update Redis
-      await this.redis.setex(
-        `job:${jobId}`,
-        604800,
-        JSON.stringify(updatedJob)
-      );
+      const shouldUpdateRedis =
+        status === "completed" ||
+        status === "failed" ||
+        status === "processing" ||
+        (updates.processedRecords && updates.processedRecords % 10 === 0); // Update every 10 records
 
-      const mongoUpdates: any = {
-        status,
-        processedRecords:
-          updates.processedRecords || existingJob.processedRecords,
-      };
-
-      if (updates.completedAt) {
-        mongoUpdates.completedAt = updates.completedAt;
+      if (shouldUpdateRedis) {
+        await this.redis.setex(
+          `job:${jobId}`,
+          604800, // 7 days
+          JSON.stringify(updatedJob)
+        );
       }
 
-      if (updates.errorMessage) {
-        mongoUpdates.errorMessage = updates.errorMessage;
+      if (
+        status === "completed" ||
+        status === "failed" ||
+        status === "processing"
+      ) {
+        await ProcessingJobModel.updateOne(
+          { jobId },
+          {
+            status,
+            processedRecords:
+              updates.processedRecords || existingJob.processedRecords,
+            completedAt: updates.completedAt,
+            errorMessage: updates.errorMessage,
+          }
+        );
       }
-
-      await ProcessingJobModel.updateOne({ jobId }, mongoUpdates);
     } catch (error) {
       logger.error("Failed to update job status", error as Error, {
         jobId,
@@ -324,15 +377,45 @@ export class JobQueueService {
     }
   }
 
+  private progressUpdateBuffer = new Map<
+    string,
+    { processed: number; total: number; lastUpdate: number }
+  >();
+
   private async updateJobProgress(
     jobId: string,
     processed: number,
     total: number
   ): Promise<void> {
     try {
-      await this.updateJobStatus(jobId, "processing", {
-        processedRecords: processed,
-      });
+      const now = Date.now();
+      const existing = this.progressUpdateBuffer.get(jobId);
+
+      const shouldUpdate =
+        !existing ||
+        now - existing.lastUpdate > 5000 ||
+        processed === total ||
+        Math.floor((processed / total) * 10) !==
+          Math.floor((existing.processed / existing.total) * 10);
+
+      if (shouldUpdate) {
+        this.progressUpdateBuffer.set(jobId, {
+          processed,
+          total,
+          lastUpdate: now,
+        });
+
+        await this.updateJobStatus(jobId, "processing", {
+          processedRecords: processed,
+        });
+      } else {
+        // Just update memory without Redis/DB
+        const job = this.jobs.get(jobId);
+        if (job) {
+          job.processedRecords = processed;
+          this.jobs.set(jobId, job);
+        }
+      }
     } catch (error) {
       logger.error("Failed to update job progress", error as Error, {
         jobId,
@@ -487,22 +570,53 @@ export class JobQueueService {
     try {
       const jobs: ProcessingJob[] = [];
 
-      // Get all job keys from Redis
-      const jobKeys = await this.redis.keys("job:*");
+      if (status === "completed") {
+        // For completed jobs, get from MongoDB first (most reliable)
+        const mongoJobs = await ProcessingJobModel.find({
+          status: "completed",
+        }).sort({ completedAt: -1 });
 
-      for (const key of jobKeys) {
-        const jobData = await this.redis.get(key);
-        if (jobData) {
-          const job: ProcessingJob = JSON.parse(jobData);
-
-          // Convert date strings back to Date objects
-          job.createdAt = new Date(job.createdAt);
-          if (job.completedAt) {
-            job.completedAt = new Date(job.completedAt);
+        for (const mongoJob of mongoJobs) {
+          const fullJob = await this.getJobFromMongoDB(mongoJob.jobId);
+          if (fullJob) {
+            jobs.push(fullJob);
+            // Update cache with complete data
+            this.jobs.set(fullJob.id, fullJob);
           }
+        }
+      } else {
+        // For other statuses, check Redis first, then MongoDB
+        const jobKeys = await this.redis.keys("job:*");
 
-          if (job.status === status) {
-            jobs.push(job);
+        for (const key of jobKeys) {
+          const jobData = await this.redis.get(key);
+          if (jobData) {
+            const job: ProcessingJob = JSON.parse(jobData);
+
+            // Convert date strings back to Date objects
+            job.createdAt = new Date(job.createdAt);
+            if (job.completedAt) {
+              job.completedAt = new Date(job.completedAt);
+            }
+
+            if (job.status === status) {
+              jobs.push(job);
+            }
+          }
+        }
+
+        // Also check MongoDB for any missing jobs
+        const mongoJobs = await ProcessingJobModel.find({
+          status,
+        }).sort({ createdAt: -1 });
+
+        for (const mongoJob of mongoJobs) {
+          const existingJob = jobs.find((j) => j.id === mongoJob.jobId);
+          if (!existingJob) {
+            const fullJob = await this.getJobFromMongoDB(mongoJob.jobId);
+            if (fullJob) {
+              jobs.push(fullJob);
+            }
           }
         }
       }
@@ -735,6 +849,69 @@ export class JobQueueService {
           timestamp: new Date().toISOString(),
         },
       };
+    }
+  }
+
+  private cleanupMemoryCache(): void {
+    const maxCacheSize = 1000;
+    const jobs = Array.from(this.jobs.entries());
+
+    if (jobs.length > maxCacheSize) {
+      // Sort by last accessed time and remove oldest
+      const sortedJobs = jobs.sort((a, b) => {
+        const aTime = new Date(a[1].completedAt || a[1].createdAt).getTime();
+        const bTime = new Date(b[1].completedAt || b[1].createdAt).getTime();
+        return bTime - aTime;
+      });
+
+      // Keep only the most recent jobs
+      const jobsToKeep = sortedJobs.slice(0, maxCacheSize);
+      this.jobs.clear();
+
+      jobsToKeep.forEach(([id, job]) => {
+        this.jobs.set(id, job);
+      });
+
+      logger.info("Memory cache cleaned up", {
+        cleanedCount: jobs.length - maxCacheSize,
+        count: maxCacheSize,
+      });
+    }
+  }
+
+  private setupMemoryCleanup(): void {
+    setInterval(() => {
+      this.cleanupMemoryCache();
+    }, 10 * 60 * 1000); // Every 10 minutes
+  }
+
+  // Add this method to manually sync cache when needed
+  public async syncJobCache(jobId: string): Promise<ProcessingJob | null> {
+    try {
+      const mongoJob = await this.getJobFromMongoDB(jobId);
+      if (mongoJob) {
+        // Update memory cache
+        this.jobs.set(jobId, mongoJob);
+
+        // Update Redis cache
+        await this.redis.setex(
+          `job:${jobId}`,
+          604800,
+          JSON.stringify(mongoJob)
+        );
+
+        logger.info("Job cache synced", {
+          jobId,
+          status: mongoJob.status,
+          resultsCount: mongoJob.results?.length || 0,
+        });
+
+        return mongoJob;
+      }
+      return null;
+    } catch (error) {
+      logger.error("Failed to sync job cache", error as Error, { jobId });
+      return null;
     }
   }
 }

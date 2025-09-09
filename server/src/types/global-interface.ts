@@ -242,6 +242,8 @@ export interface LogContext {
   // Extra fields for logging
   success?: boolean;
   adminUserId?: string;
+  resultsCount?: number;
+  
   newUserId?: string;
   newUserEmail?: string;
   targetUserId?: string;

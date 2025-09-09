@@ -10,7 +10,7 @@ interface ApiResponse<T = any> {
 
 interface TrademarkData {
   serialNumber: string;
-   markText: string | null;
+  markText: string | null;
   ownerName: string | null;
   ownerPhone: string | null;
   ownerEmail: string | null;

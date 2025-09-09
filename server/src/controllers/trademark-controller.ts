@@ -377,6 +377,7 @@ export class TrademarkController {
             createdAt: job.createdAt,
             completedAt: job.completedAt,
             errorMessage: job.errorMessage,
+            results: job.results,
           })),
           count: jobs.length,
         },
