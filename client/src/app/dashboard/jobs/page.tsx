@@ -60,7 +60,18 @@ export default function JobsPage() {
             setState((prev) => ({
               ...prev,
               jobs: prev.jobs.map((job) =>
-                job.id === jobId ? { ...job, ...response.data } : job
+                job.id === jobId
+                  ? {
+                      ...job,
+                      status: response.data?.status || job.status,
+                      processedRecords:
+                        response.data?.progress.processed ||
+                        job.processedRecords,
+                      totalRecords:
+                        response.data?.progress.total || job.totalRecords,
+                      results: response.data?.results || job.results,
+                    }
+                  : job
               ),
             }));
 
@@ -80,74 +91,74 @@ export default function JobsPage() {
           console.error(`Failed to update job ${jobId}:`, error);
         }
       });
-    }, 3000); // Poll every 3 seconds
+    }, 1000);
 
     return () => clearInterval(interval);
   }, [pollingJobs]);
 
- const fetchJobs = useCallback(async () => {
-  setState((prev) => ({ ...prev, loading: true, error: null }));
+  const fetchJobs = useCallback(async () => {
+    setState((prev) => ({ ...prev, loading: true, error: null }));
 
-  try {
-    let allJobs: ProcessingJob[] = [];
+    try {
+      let allJobs: ProcessingJob[] = [];
 
-    if (state.selectedStatus === "all") {
-      // Fetch all statuses
-      const [completed, processing, failed, pending] = await Promise.all([
-        ApiService.getJobsByStatus("completed"),
-        ApiService.getJobsByStatus("processing"),
-        ApiService.getJobsByStatus("failed"),
-        ApiService.getJobsByStatus("pending"),
-      ]);
+      if (state.selectedStatus === "all") {
+        // Fetch all statuses
+        const [completed, processing, failed, pending] = await Promise.all([
+          ApiService.getJobsByStatus("completed"),
+          ApiService.getJobsByStatus("processing"),
+          ApiService.getJobsByStatus("failed"),
+          ApiService.getJobsByStatus("pending"),
+        ]);
 
-      allJobs = [
-        ...(pending.data?.jobs || []),
-        ...(processing.data?.jobs || []),
-        ...(completed.data?.jobs || []),
-        ...(failed.data?.jobs || []),
-      ];
+        allJobs = [
+          ...(pending.data?.jobs || []),
+          ...(processing.data?.jobs || []),
+          ...(completed.data?.jobs || []),
+          ...(failed.data?.jobs || []),
+        ];
 
-      // Start polling for processing jobs
-      const processingJobIds =
-        processing.data?.jobs?.map((job) => job.id) || [];
-      const pendingJobIds = pending.data?.jobs?.map((job) => job.id) || [];
-      setPollingJobs(new Set([...processingJobIds, ...pendingJobIds]));
-    } else {
-      const response = await ApiService.getJobsByStatus(state.selectedStatus);
-      allJobs = response.data?.jobs || [];
+        // Start polling for processing jobs
+        const processingJobIds =
+          processing.data?.jobs?.map((job) => job.id) || [];
+        const pendingJobIds = pending.data?.jobs?.map((job) => job.id) || [];
+        setPollingJobs(new Set([...processingJobIds, ...pendingJobIds]));
+      } else {
+        const response = await ApiService.getJobsByStatus(state.selectedStatus);
+        allJobs = response.data?.jobs || [];
 
-      // Start polling if status is processing or pending
-      if (
-        state.selectedStatus === "processing" ||
-        state.selectedStatus === "pending"
-      ) {
-        setPollingJobs(new Set(allJobs.map((job) => job.id)));
+        // Start polling if status is processing or pending
+        if (
+          state.selectedStatus === "processing" ||
+          state.selectedStatus === "pending"
+        ) {
+          setPollingJobs(new Set(allJobs.map((job) => job.id)));
+        }
       }
+
+      // Sort by creation date (newest first)
+      allJobs.sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+
+      setState((prev) => ({
+        ...prev,
+        jobs: allJobs,
+        loading: false,
+      }));
+    } catch (error) {
+      setState((prev) => ({
+        ...prev,
+        error: error instanceof Error ? error.message : "Failed to fetch jobs",
+        loading: false,
+      }));
     }
+  }, [state.selectedStatus]);
 
-    // Sort by creation date (newest first)
-    allJobs.sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
-
-    setState((prev) => ({
-      ...prev,
-      jobs: allJobs,
-      loading: false,
-    }));
-  } catch (error) {
-    setState((prev) => ({
-      ...prev,
-      error: error instanceof Error ? error.message : "Failed to fetch jobs",
-      loading: false,
-    }));
-  }
-}, [state.selectedStatus]);
-
-useEffect(() => {
-  fetchJobs();
-}, [fetchJobs]);
+  useEffect(() => {
+    fetchJobs();
+  }, [fetchJobs]);
 
   const getStatusBadge = (status: string) => {
     const baseClasses =
@@ -428,7 +439,9 @@ useEffect(() => {
                                   <th className="px-3 py-2 text-left">
                                     Owner Name
                                   </th>
-                                  <th className="px-3 py-2 text-left">Mark Text</th>
+                                  <th className="px-3 py-2 text-left">
+                                    Mark Text
+                                  </th>
                                   <th className="px-3 py-2 text-left">
                                     Status
                                   </th>
@@ -443,7 +456,9 @@ useEffect(() => {
                                     <td className="px-3 py-2">
                                       {result.serialNumber}
                                     </td>
-                                    <td className="px-3 py-2">{result.markText || "N/A"}</td>
+                                    <td className="px-3 py-2">
+                                      {result.markText || "N/A"}
+                                    </td>
                                     <td className="px-3 py-2">
                                       {result.ownerName || "N/A"}
                                     </td>

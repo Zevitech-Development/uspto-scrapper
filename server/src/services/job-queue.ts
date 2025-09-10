@@ -226,6 +226,7 @@ export class JobQueueService {
             total,
             currentSerial: serialNumbers[processed - 1],
           });
+          this.updateJobProgress(jobId, processed, total);
         }
       );
 
@@ -393,10 +394,10 @@ export class JobQueueService {
 
       const shouldUpdate =
         !existing ||
-        now - existing.lastUpdate > 5000 ||
+        now - existing.lastUpdate > 1000 ||
         processed === total ||
-        Math.floor((processed / total) * 10) !==
-          Math.floor((existing.processed / existing.total) * 10);
+        Math.floor((processed / total) * 20) !==
+          Math.floor((existing.processed / existing.total) * 20);
 
       if (shouldUpdate) {
         this.progressUpdateBuffer.set(jobId, {
