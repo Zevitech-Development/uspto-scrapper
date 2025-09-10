@@ -243,7 +243,32 @@ export interface LogContext {
   success?: boolean;
   adminUserId?: string;
   resultsCount?: number;
-  
+  mongoStatus?: string;
+  matched?: number;
+  modified?: number;
+  redis?: boolean;
+  paused?: boolean;
+  stats?: {
+    waiting: number;
+    active: number;
+    completed: number;
+    failed: number;
+    delayed: number;
+  };
+  health?: {
+    isHealthy: boolean;
+    redis: { connected: boolean; error?: string };
+    queue: { isPaused: boolean; error?: string };
+    processors: { active: boolean; error?: string };
+    stats: {
+      waiting: number;
+      active: number;
+      completed: number;
+      failed: number;
+      delayed: number;
+    };
+  };
+
   newUserId?: string;
   newUserEmail?: string;
   targetUserId?: string;

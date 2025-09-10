@@ -65,10 +65,10 @@ export default function JobsPage() {
                       ...job,
                       status: response.data?.status || job.status,
                       processedRecords:
-                        response.data?.progress.processed ||
+                        response.data?.progress?.processed ||
                         job.processedRecords,
                       totalRecords:
-                        response.data?.progress.total || job.totalRecords,
+                        response.data?.progress?.total || job.totalRecords,
                       results: response.data?.results || job.results,
                     }
                   : job
@@ -91,7 +91,7 @@ export default function JobsPage() {
           console.error(`Failed to update job ${jobId}:`, error);
         }
       });
-    }, 1000);
+    }, 12000); // slowed from 5s to 12s to cut polling traffic
 
     return () => clearInterval(interval);
   }, [pollingJobs]);
@@ -118,21 +118,19 @@ export default function JobsPage() {
           ...(failed.data?.jobs || []),
         ];
 
-        // Start polling for processing jobs
+        // Start polling only for processing jobs (not pending) to reduce load
         const processingJobIds =
           processing.data?.jobs?.map((job) => job.id) || [];
-        const pendingJobIds = pending.data?.jobs?.map((job) => job.id) || [];
-        setPollingJobs(new Set([...processingJobIds, ...pendingJobIds]));
+        setPollingJobs(new Set(processingJobIds));
       } else {
         const response = await ApiService.getJobsByStatus(state.selectedStatus);
         allJobs = response.data?.jobs || [];
 
-        // Start polling if status is processing or pending
-        if (
-          state.selectedStatus === "processing" ||
-          state.selectedStatus === "pending"
-        ) {
+        // Start polling only when viewing processing jobs
+        if (state.selectedStatus === "processing") {
           setPollingJobs(new Set(allJobs.map((job) => job.id)));
+        } else {
+          setPollingJobs(new Set());
         }
       }
 
@@ -158,7 +156,7 @@ export default function JobsPage() {
 
   useEffect(() => {
     fetchJobs();
-  }, [fetchJobs]);
+  }, [state.selectedStatus, fetchJobs]); // ensure single fetch on mount and when tab changes
 
   const getStatusBadge = (status: string) => {
     const baseClasses =

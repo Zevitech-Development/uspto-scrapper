@@ -133,12 +133,6 @@ export class JobQueueService {
 
     this.queue.on("progress", (job, progress: JobProgress) => {
       if (job.data.jobId) {
-        this.updateJobProgress(
-          job.data.jobId,
-          progress.processed,
-          progress.total
-        );
-
         logger.jobProgress(job.data.jobId, progress.processed, progress.total);
       }
     });
@@ -173,6 +167,8 @@ export class JobQueueService {
       // Store job in memory and Redis
       this.jobs.set(jobId, job);
       await this.redis.setex(`job:${jobId}`, 600, JSON.stringify(job));
+      // Index job by status to avoid KEYS scans later
+      await this.redis.sadd("job:status:pending", jobId);
       await this.saveJobToMongoDB(jobId, userId, serialNumbers);
 
       // Add to Bull queue
@@ -205,35 +201,62 @@ export class JobQueueService {
   private async processTrademarkJob(job: Bull.Job<JobData>): Promise<void> {
     const { jobId, serialNumbers } = job.data;
     const startTime = Date.now();
+    let jobCompleted = false;
+    let progressUpdateLock = false;
 
     try {
+      // Check if job was already processed (defensive check)
+      const existingJob = await this.getJobStatus(jobId);
+      if (
+        existingJob &&
+        (existingJob.status === "completed" || existingJob.status === "failed")
+      ) {
+        logger.warn("Job already processed, skipping", {
+          jobId,
+          status: existingJob.status,
+        });
+        return;
+      }
+
       logger.info("Starting trademark job processing", {
         action: "job_start",
         jobId,
         totalRecords: serialNumbers.length,
       });
 
-      // Update job status to processing
       await this.updateJobStatus(jobId, "processing");
 
-      // Process serial numbers with progress updates
       const results = await this.usptoService.fetchMultipleTrademarkData(
         serialNumbers,
         (processed, total) => {
-          // Update Bull job progress
-          job.progress({
-            processed,
-            total,
-            currentSerial: serialNumbers[processed - 1],
-          });
-          this.updateJobProgress(jobId, processed, total);
+          // Defensive checks to prevent race conditions
+          if (!jobCompleted && !progressUpdateLock) {
+            progressUpdateLock = true;
+            try {
+              job.progress({
+                processed,
+                total,
+                currentSerial: serialNumbers[processed - 1],
+              });
+              this.updateJobProgress(jobId, processed, total);
+            } catch (error) {
+              logger.error("Error updating progress", error as Error, {
+                jobId,
+              });
+            } finally {
+              progressUpdateLock = false;
+            }
+          }
         }
       );
 
-      // Update job with results
+      // Set completion flag before any completion operations
+      jobCompleted = true;
+
       const duration = Date.now() - startTime;
       const successCount = results.filter((r) => r.status === "success").length;
 
+      // Final status update with all results
       await this.updateJobStatus(jobId, "completed", {
         results,
         completedAt: new Date(),
@@ -241,17 +264,14 @@ export class JobQueueService {
       });
 
       await this.saveTrademarkDataToMongoDB(results);
-
       logger.jobCompleted(jobId, serialNumbers.length, successCount, duration);
     } catch (error) {
       logger.error("Error processing trademark job", error as Error, { jobId });
-
       await this.updateJobStatus(jobId, "failed", {
         errorMessage: (error as Error).message,
         completedAt: new Date(),
       });
-
-      throw error; // Re-throw to mark Bull job as failed
+      throw error;
     }
   }
 
@@ -298,12 +318,30 @@ export class JobQueueService {
         return job;
       }
 
-      // Last resort: MongoDB
+      // Last resort: MongoDB (only for completed/failed jobs)
       const mongoJob = await this.getJobFromMongoDB(jobId);
       if (mongoJob) {
-        this.jobs.set(jobId, mongoJob);
-        await this.redis.setex(`job:${jobId}`, 3600, JSON.stringify(mongoJob));
-        return mongoJob;
+        // Only trust MongoDB for completed/failed jobs
+        // For active jobs, prefer Redis/memory cache to avoid stale data
+        if (mongoJob.status === "completed" || mongoJob.status === "failed") {
+          this.jobs.set(jobId, mongoJob);
+          await this.redis.setex(
+            `job:${jobId}`,
+            3600,
+            JSON.stringify(mongoJob)
+          );
+          return mongoJob;
+        } else {
+          // For active jobs from MongoDB, don't cache stale data
+          logger.warn(
+            "Found active job in MongoDB but not in Redis - potential stale data",
+            {
+              jobId,
+              mongoStatus: mongoJob.status,
+            }
+          );
+          return null; // Return null to indicate job not found in reliable sources
+        }
       }
 
       return null;
@@ -339,11 +377,17 @@ export class JobQueueService {
       // Update memory first
       this.jobs.set(jobId, updatedJob);
 
+      // Maintain Redis status index sets to avoid KEYS scans
+      const prevStatus = existingJob.status;
+      if (prevStatus !== status) {
+        await this.redis.srem(`job:status:${prevStatus}` as const, jobId);
+        await this.redis.sadd(`job:status:${status}` as const, jobId);
+      }
+
       // Then update Redis
       const shouldUpdateRedis =
         status === "completed" ||
         status === "failed" ||
-        status === "processing" ||
         (updates.processedRecords && updates.processedRecords % 10 === 0); // Update every 10 records
 
       if (shouldUpdateRedis) {
@@ -354,21 +398,32 @@ export class JobQueueService {
         );
       }
 
-      if (
-        status === "completed" ||
-        status === "failed" ||
-        status === "processing"
-      ) {
-        await ProcessingJobModel.updateOne(
-          { jobId },
-          {
+      // Always update MongoDB for status changes
+      const updateResult = await ProcessingJobModel.updateOne(
+        { jobId },
+        {
+          $set: {
             status,
             processedRecords:
               updates.processedRecords || existingJob.processedRecords,
-            completedAt: updates.completedAt,
-            errorMessage: updates.errorMessage,
-          }
-        );
+            ...(updates.completedAt && { completedAt: updates.completedAt }),
+            ...(updates.errorMessage && {
+              errorMessage: updates.errorMessage,
+            }),
+            ...(status === "processing" && { updatedAt: new Date() }),
+          },
+        }
+      );
+
+      if (updateResult.matchedCount === 0) {
+        logger.warn("MongoDB update failed - job not found", { jobId, status });
+      } else {
+        logger.debug("MongoDB update successful", {
+          jobId,
+          status,
+          matched: updateResult.matchedCount,
+          modified: updateResult.modifiedCount,
+        });
       }
     } catch (error) {
       logger.error("Failed to update job status", error as Error, {
@@ -392,6 +447,15 @@ export class JobQueueService {
       const now = Date.now();
       const existing = this.progressUpdateBuffer.get(jobId);
 
+      // CHECK: Don't update progress if job is already completed
+      const currentJob = this.jobs.get(jobId);
+      if (
+        currentJob &&
+        (currentJob.status === "completed" || currentJob.status === "failed")
+      ) {
+        return; // Exit early if job is done
+      }
+
       const shouldUpdate =
         !existing ||
         now - existing.lastUpdate > 1000 ||
@@ -406,13 +470,20 @@ export class JobQueueService {
           lastUpdate: now,
         });
 
-        await this.updateJobStatus(jobId, "processing", {
-          processedRecords: processed,
-        });
+        // Only update to "processing" if not already completed
+        if (
+          currentJob &&
+          currentJob.status !== "completed" &&
+          currentJob.status !== "failed"
+        ) {
+          await this.updateJobStatus(jobId, "processing", {
+            processedRecords: processed,
+          });
+        }
       } else {
         // Just update memory without Redis/DB
         const job = this.jobs.get(jobId);
-        if (job) {
+        if (job && job.status !== "completed" && job.status !== "failed") {
           job.processedRecords = processed;
           this.jobs.set(jobId, job);
         }
@@ -586,27 +657,33 @@ export class JobQueueService {
           }
         }
       } else {
-        // For other statuses, check Redis first, then MongoDB
-        const jobKeys = await this.redis.keys("job:*");
+        // Use Redis status index instead of KEYS scans
+        const jobIds = await this.redis.smembers(`job:status:${status}`);
 
-        for (const key of jobKeys) {
-          const jobData = await this.redis.get(key);
-          if (jobData) {
-            const job: ProcessingJob = JSON.parse(jobData);
-
-            // Convert date strings back to Date objects
-            job.createdAt = new Date(job.createdAt);
-            if (job.completedAt) {
-              job.completedAt = new Date(job.completedAt);
-            }
-
-            if (job.status === status) {
-              jobs.push(job);
-            }
+        if (jobIds.length > 0) {
+          const pipeline = this.redis.pipeline();
+          for (const id of jobIds) {
+            pipeline.get(`job:${id}`);
           }
+          const results = await pipeline.exec();
+          results?.forEach(([, value]) => {
+            if (value) {
+              const job: ProcessingJob = JSON.parse(value as string);
+
+              // Convert date strings back to Date objects
+              job.createdAt = new Date(job.createdAt);
+              if (job.completedAt) {
+                job.completedAt = new Date(job.completedAt);
+              }
+
+              if (job.status === status) {
+                jobs.push(job);
+              }
+            }
+          });
         }
 
-        // Also check MongoDB for any missing jobs
+        // Also check MongoDB for any missing jobs (fallback if set wasn’t updated earlier)
         const mongoJobs = await ProcessingJobModel.find({
           status,
         }).sort({ createdAt: -1 });
@@ -615,7 +692,7 @@ export class JobQueueService {
           const existingJob = jobs.find((j) => j.id === mongoJob.jobId);
           if (!existingJob) {
             const fullJob = await this.getJobFromMongoDB(mongoJob.jobId);
-            if (fullJob) {
+            if (fullJob && fullJob.status === status) {
               jobs.push(fullJob);
             }
           }
@@ -756,6 +833,89 @@ export class JobQueueService {
     }
   }
 
+  public async getQueueHealth(): Promise<{
+    isHealthy: boolean;
+    redis: { connected: boolean; error?: string };
+    queue: { isPaused: boolean; error?: string };
+    processors: { active: boolean; error?: string };
+    stats: {
+      waiting: number;
+      active: number;
+      completed: number;
+      failed: number;
+      delayed: number;
+    };
+  }> {
+    const health = {
+      isHealthy: true,
+      redis: { connected: false, error: undefined as string | undefined },
+      queue: { isPaused: false, error: undefined as string | undefined },
+      processors: { active: false, error: undefined as string | undefined },
+      stats: { waiting: 0, active: 0, completed: 0, failed: 0, delayed: 0 },
+    };
+
+    try {
+      // Check Redis connection
+      await this.redis.ping();
+      health.redis.connected = true;
+    } catch (error) {
+      health.redis.connected = false;
+      health.redis.error = (error as Error).message;
+      health.isHealthy = false;
+    }
+
+    try {
+      // Check queue status
+      health.queue.isPaused = await this.queue.isPaused();
+      if (health.queue.isPaused) {
+        health.isHealthy = false;
+      }
+    } catch (error) {
+      health.queue.error = (error as Error).message;
+      health.isHealthy = false;
+    }
+
+    try {
+      // Check processors
+      const activeJobs = await this.queue.getActive();
+      health.processors.active = activeJobs.length >= 0; // Processors are active if we can get active jobs
+
+      // Get queue stats
+      health.stats = await this.getQueueStats();
+    } catch (error) {
+      health.processors.error = (error as Error).message;
+      health.isHealthy = false;
+    }
+
+    return health;
+  }
+
+  public async logQueueHealth(): Promise<void> {
+    try {
+      const health = await this.getQueueHealth();
+
+      if (health.isHealthy) {
+        logger.info("Queue health check passed", {
+          action: "queue_health_check",
+          redis: health.redis.connected,
+          paused: health.queue.isPaused,
+          stats: health.stats,
+        });
+      } else {
+        logger.error(
+          "Queue health check failed",
+          new Error("Queue unhealthy"),
+          {
+            action: "queue_health_check",
+            health,
+          }
+        );
+      }
+    } catch (error) {
+      logger.error("Failed to perform queue health check", error as Error);
+    }
+  }
+
   public async shutdown(): Promise<void> {
     try {
       logger.info("Shutting down job queue service");
@@ -881,9 +1041,20 @@ export class JobQueueService {
   }
 
   private setupMemoryCleanup(): void {
+    // Memory cleanup every 10 minutes
     setInterval(() => {
       this.cleanupMemoryCache();
-    }, 10 * 60 * 1000); // Every 10 minutes
+    }, 10 * 60 * 1000);
+
+    // Health check every 5 minutes
+    setInterval(() => {
+      this.logQueueHealth();
+    }, 5 * 60 * 1000);
+
+    // Initial health check
+    setTimeout(() => {
+      this.logQueueHealth();
+    }, 30 * 1000); // 30 seconds after startup
   }
 
   // Add this method to manually sync cache when needed
