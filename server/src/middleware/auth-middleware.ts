@@ -3,7 +3,6 @@ import { AuthService } from "../services/auth-service";
 import { ApiResponse, AppError } from "../types/global-interface";
 import logger from "../utils/logger";
 
-// Extend Request interface to include user
 export interface AuthenticatedRequest extends Request {
   user?: {
     id: string;
@@ -17,9 +16,6 @@ export interface AuthenticatedRequest extends Request {
 export class AuthMiddleware {
   private static authService = AuthService.getInstance();
 
-  /**
-   * Middleware to authenticate JWT token
-   */
   public static async authenticate(
     req: AuthenticatedRequest,
     res: Response,
@@ -95,9 +91,6 @@ export class AuthMiddleware {
     }
   }
 
-  /**
-   * Middleware to check if user is admin
-   */
   public static requireAdmin(
     req: AuthenticatedRequest,
     res: Response,
@@ -139,9 +132,6 @@ export class AuthMiddleware {
     next();
   }
 
-  /**
-   * Middleware to check if user is active
-   */
   public static requireActiveUser(
     req: AuthenticatedRequest,
     res: Response,
@@ -162,9 +152,6 @@ export class AuthMiddleware {
     next();
   }
 
-  /**
-   * Optional authentication - doesn't fail if no token
-   */
   public static async optionalAuth(
     req: AuthenticatedRequest,
     res: Response,
@@ -207,9 +194,6 @@ export class AuthMiddleware {
     }
   }
 
-  /**
-   * Check if current user can access resource
-   */
   public static checkResourceAccess(
     req: AuthenticatedRequest,
     res: Response,

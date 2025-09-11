@@ -34,7 +34,6 @@ export const rateLimiter = rateLimit({
 },
 });
 
-
 export const errorHandler = (
   error: Error | AppError,
   req: Request,
@@ -165,7 +164,6 @@ export const errorHandler = (
   res.status(500).json(response);
 };
 
-
 export const requestLogger = (
   req: Request,
   res: Response,
@@ -173,55 +171,17 @@ export const requestLogger = (
 ): void => {
   const startTime = Date.now();
 
-  // Log request start
-  // logger.info("Request started", {
-  //   method: req.method,
-  //   path: req.path,
-  //   ip: req.ip,
-  //   userAgent: req.get("User-Agent"),
-  // });
-
-  // Save original `end` method
   const originalEnd = res.end.bind(res);
 
   res.end = ((chunk?: any, encoding?: any, cb?: () => void) => {
     const duration = Date.now() - startTime;
 
-    // logger.info("Request completed", {
-    //   method: req.method,
-    //   path: req.path,
-    //   statusCode: res.statusCode,
-    //   duration,
-    //   contentLength: res.get("content-length"),
-    // });
 
     return originalEnd(chunk, encoding, cb);
   }) as typeof res.end;
 
   next();
 };
-
-// export const corsOptions = {
-//   origin: (
-//     origin: string | undefined,
-//     callback: (error: Error | null, allow?: boolean) => void
-//   ) => {
-//     const allowedOrigins = config.get("corsOrigins");
-
-//     // Allow requests with no origin (like mobile apps or curl requests)
-//     if (!origin) return callback(null, true);
-
-//     if (allowedOrigins.includes(origin)) {
-//       callback(null, true);
-//     } else {
-//       callback(new Error("Not allowed by CORS"));
-//     }
-//   },
-//   credentials: true,
-//   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-//   allowedHeaders: ["Content-Type", "Authorization", "x-api-key"],
-//   exposedHeaders: ["Content-Disposition"], // For file downloads
-// };
 
 export const corsOptions = {
   origin: (
@@ -255,7 +215,6 @@ export const corsOptions = {
   exposedHeaders: ["Content-Disposition"],
 };
 
-
 export const securityHeaders = (
   req: Request,
   res: Response,
@@ -277,7 +236,6 @@ export const securityHeaders = (
 
   next();
 };
-
 
 export const requestSizeLimit = (
   req: Request,
@@ -324,7 +282,6 @@ export const validateApiKey = (
 
   next();
 };
-
 
 export const healthCheckBypass = (
   req: Request,

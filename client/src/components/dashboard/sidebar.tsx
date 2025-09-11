@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import React from 'react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { cn } from '@/lib/utils';
+import React from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
 import {
   BarChart3,
   Upload,
@@ -13,53 +13,53 @@ import {
   Settings,
   LogOut,
   Building2,
-  X
-} from 'lucide-react';
-import { MenuItem, SidebarProps } from '@/types/dashboard';
+  X,
+} from "lucide-react";
+import { MenuItem, SidebarProps } from "@/types/dashboard";
 
 // Function to generate menu items
-const getMenuItems = (userRole: 'admin' | 'user'): MenuItem[] => {
+const getMenuItems = (userRole: "admin" | "user"): MenuItem[] => {
   const commonItems = [
     {
-      id: 'overview',
-      label: 'Overview',
+      id: "overview",
+      label: "Overview",
       icon: BarChart3,
-      href: '/dashboard',
+      href: "/dashboard",
     },
     {
-      id: 'upload',
-      label: 'Upload & Process',
+      id: "upload",
+      label: "Upload & Process",
       icon: Upload,
-      href: '/dashboard/upload',
+      href: "/dashboard/upload",
     },
     {
-      id: 'jobs',
-      label: userRole === 'admin' ? 'All Jobs' : 'My Jobs',
+      id: "jobs",
+      label: userRole === "admin" ? "All Jobs" : "My Jobs",
       icon: Clock,
-      href: '/dashboard/jobs',
+      href: "/dashboard/jobs",
     },
   ];
 
-  if (userRole === 'admin') {
+  if (userRole === "admin") {
     return [
       ...commonItems,
       {
-        id: 'analytics',
-        label: 'Analytics',
+        id: "analytics",
+        label: "Analytics",
         icon: TrendingUp,
-        href: '/dashboard/analytics',
+        href: "/dashboard/analytics",
       },
       {
-        id: 'users',
-        label: 'User Management',
+        id: "users",
+        label: "User Management",
         icon: Users,
-        href: '/dashboard/users',
+        href: "/dashboard/users",
       },
       {
-        id: 'settings',
-        label: 'System Settings',
+        id: "settings",
+        label: "System Settings",
         icon: Settings,
-        href: '/dashboard/settings',
+        href: "/dashboard/settings",
       },
     ];
   }
@@ -67,18 +67,18 @@ const getMenuItems = (userRole: 'admin' | 'user'): MenuItem[] => {
   return [
     ...commonItems,
     {
-      id: 'settings',
-      label: 'Settings',
+      id: "settings",
+      label: "Settings",
       icon: Settings,
-      href: '/dashboard/settings',
+      href: "/dashboard/settings",
     },
   ];
 };
 
-export const Sidebar: React.FC<SidebarProps> = ({ 
-  isOpen, 
-  onToggle, 
-  userRole 
+export const Sidebar: React.FC<SidebarProps> = ({
+  isOpen,
+  onToggle,
+  userRole,
 }) => {
   const pathname = usePathname();
 
@@ -86,8 +86,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const menuItems = getMenuItems(userRole);
 
   const isActive = (href: string): boolean => {
-    if (href === '/dashboard') {
-      return pathname === '/dashboard';
+    if (href === "/dashboard") {
+      return pathname === "/dashboard";
     }
     return pathname.startsWith(href);
   };
@@ -121,7 +121,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <p className="text-xs text-gray-500">Dashboard</p>
             </div>
           </div>
-          
+
           {/* Mobile close button */}
           <button
             onClick={onToggle}
@@ -153,7 +153,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                 )}
               >
-                <Icon className={cn("w-5 h-5", active ? "text-blue-700" : "text-gray-500")} />
+                <Icon
+                  className={cn(
+                    "w-5 h-5",
+                    active ? "text-blue-700" : "text-gray-500"
+                  )}
+                />
                 <span>{item.label}</span>
               </Link>
             );
@@ -163,10 +168,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* User Role Badge */}
         <div className="px-4 py-4 border-t border-gray-200">
           <div className="flex items-center space-x-3 px-3 py-2">
-            <div className={cn(
-              "w-2 h-2 rounded-full",
-              userRole === 'admin' ? "bg-purple-500" : "bg-green-500"
-            )} />
+            <div
+              className={cn(
+                "w-2 h-2 rounded-full",
+                userRole === "admin" ? "bg-purple-500" : "bg-green-500"
+              )}
+            />
             <span className="text-sm text-gray-600 capitalize">
               {userRole} Access
             </span>

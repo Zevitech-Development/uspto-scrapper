@@ -20,9 +20,6 @@ export class ExcelService {
     return ExcelService.instance;
   }
 
-  /**
-   * Parse Excel file and extract serial numbers
-   */
   public async parseExcelFile(
     file: Express.Multer.File,
     columnName?: string
@@ -95,9 +92,6 @@ export class ExcelService {
     }
   }
 
-  /**
-   * Extract serial numbers from parsed Excel data
-   */
   private extractSerialNumbers(
     data: any[][],
     columnName?: string,
@@ -147,9 +141,6 @@ export class ExcelService {
     };
   }
 
-  /**
-   * Find the column containing serial numbers
-   */
   private findSerialNumberColumn(headers: any[], columnName?: string): number {
     // If specific column name provided, look for it
     if (columnName) {
@@ -157,7 +148,7 @@ export class ExcelService {
         (header) =>
           header &&
           header.toString().toLowerCase().trim() ===
-          columnName.toLowerCase().trim()
+            columnName.toLowerCase().trim()
       );
 
       if (index === -1) {
@@ -240,9 +231,6 @@ export class ExcelService {
     );
   }
 
-  /**
-   * Clean and normalize serial number
-   */
   private cleanSerialNumber(value: any): string {
     if (value === undefined || value === null) {
       return "";
@@ -264,9 +252,6 @@ export class ExcelService {
     return cleaned;
   }
 
-  /**
-   * Validate serial number format
-   */
   private isValidSerialNumber(serialNumber: string): boolean {
     if (!serialNumber || serialNumber.length === 0) {
       return false;
@@ -282,9 +267,6 @@ export class ExcelService {
     );
   }
 
-  /**
-   * Generate Excel file from trademark data results
-   */
   public generateResultsExcel(
     results: any[],
     originalFileName: string
@@ -299,7 +281,7 @@ export class ExcelService {
       // Prepare data for Excel
       const excelData = results.map((result) => ({
         "Serial Number": result.serialNumber,
-        "Mark": result.markText || "N/A",
+        Mark: result.markText || "N/A",
         "Owner Name": result.ownerName || "N/A",
         "Owner Phone": result.ownerPhone || "N/A",
         "Owner Email": result.ownerEmail || "N/A",
@@ -366,9 +348,6 @@ export class ExcelService {
     }
   }
 
-  /**
-   * Validate uploaded file
-   */
   public validateUploadedFile(file: Express.Multer.File): void {
     if (!file) {
       throw new AppError("No file uploaded", 400, "FILE_MISSING");
