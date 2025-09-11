@@ -244,15 +244,20 @@ export class XMLParser {
   }
 
   private extractMarkText(trademark: TrademarkInfo): string | null {
-  try {
-    const markText = trademark["ns2:MarkRepresentation"]?.[0]?.["ns2:MarkReproduction"]?.[0]?.["ns2:WordMarkSpecification"]?.[0]?.["ns2:MarkVerbalElementText"]?.[0];
-    if (markText) return markText;
+    try {
+      const markText =
+        trademark["ns2:MarkRepresentation"]?.[0]?.[
+          "ns2:MarkReproduction"
+        ]?.[0]?.["ns2:WordMarkSpecification"]?.[0]?.[
+          "ns2:MarkVerbalElementText"
+        ]?.[0];
+      if (markText) return markText;
 
-    return null;
-  } catch (error) {
-    return null;
+      return null;
+    } catch (error) {
+      return null;
+    }
   }
-}
 
   private formatDate(dateString: string): string {
     try {

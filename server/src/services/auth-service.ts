@@ -28,9 +28,6 @@ export class AuthService {
     return AuthService.instance;
   }
 
-  /**
-   * Register a new user
-   */
   public async register(userData: RegisterData): Promise<AuthResponse> {
     try {
       const { email, password, firstName, lastName, role = "user" } = userData;
@@ -81,9 +78,6 @@ export class AuthService {
     }
   }
 
-  /**
-   * Login user
-   */
   public async login(credentials: LoginCredentials): Promise<AuthResponse> {
     try {
       const { email, password } = credentials;
@@ -137,9 +131,6 @@ export class AuthService {
     }
   }
 
-  /**
-   * Verify JWT token and return user
-   */
   public async verifyToken(token: string): Promise<IUser> {
     try {
       const decoded = jwt.verify(token, this.jwtSecret) as JWTPayload;
@@ -172,10 +163,6 @@ export class AuthService {
     }
   }
 
-  /**
-   * Generate JWT token for user
-   */
-
   private generateToken(user: IUser): string {
     const payload: JWTPayload = {
       userId: user._id.toString(),
@@ -194,9 +181,7 @@ export class AuthService {
 
     return jwt.sign(payload, secret, options);
   }
-  /**
-   * Generate complete auth response
-   */
+
   private generateAuthResponse(user: IUser): AuthResponse {
     const token = this.generateToken(user);
 
@@ -214,9 +199,6 @@ export class AuthService {
     };
   }
 
-  /**
-   * Change user password
-   */
   public async changePassword(
     userId: string,
     currentPassword: string,
@@ -263,9 +245,6 @@ export class AuthService {
     }
   }
 
-  /**
-   * Get user profile
-   */
   public async getUserProfile(userId: string): Promise<IUser> {
     try {
       const user = await User.findById(userId);
@@ -288,9 +267,6 @@ export class AuthService {
     }
   }
 
-  /**
-   * Update user profile
-   */
   public async updateUserProfile(
     userId: string,
     updates: Partial<Pick<IUser, "firstName" | "lastName" | "email">>
@@ -341,9 +317,6 @@ export class AuthService {
     }
   }
 
-  /**
-   * Admin: Get all users
-   */
   public async getAllUsers(
     page: number = 1,
     limit: number = 20
@@ -373,9 +346,6 @@ export class AuthService {
     }
   }
 
-  /**
-   * Admin: Create user
-   */
   public async createUser(userData: RegisterData): Promise<IUser> {
     try {
       const { email, password, firstName, lastName, role = "user" } = userData;
@@ -421,9 +391,6 @@ export class AuthService {
     }
   }
 
-  /**
-   * Admin: Update user status
-   */
   public async updateUserStatus(
     userId: string,
     isActive: boolean
@@ -461,9 +428,6 @@ export class AuthService {
     }
   }
 
-  /**
-   * Admin: Delete user
-   */
   public async deleteUser(userId: string): Promise<void> {
     try {
       const user = await User.findById(userId);
@@ -504,9 +468,6 @@ export class AuthService {
     }
   }
 
-  /**
-   * Create default admin user if none exists
-   */
   public async createDefaultAdmin(): Promise<void> {
     try {
       const adminCount = await User.countDocuments({ role: "admin" });
@@ -539,9 +500,6 @@ export class AuthService {
     }
   }
 
-  /**
-   * Get user statistics for admin dashboard
-   */
   public async getUserStats(): Promise<{
     totalUsers: number;
     activeUsers: number;

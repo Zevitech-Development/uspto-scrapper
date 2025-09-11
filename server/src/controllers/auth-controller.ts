@@ -13,9 +13,7 @@ export class AuthController {
     this.authService = AuthService.getInstance();
   }
 
-  /**
-   * User registration
-   */
+
   //   public register = async (
   //     req: Request,
   //     res: Response,
@@ -76,9 +74,7 @@ export class AuthController {
   //     }
   //   };
 
-  /**
-   * User login
-   */
+
   public login = async (
     req: Request,
     res: Response,
@@ -122,9 +118,6 @@ export class AuthController {
     }
   };
 
-  /**
-   * Get current user profile
-   */
   public getProfile = async (
     req: AuthenticatedRequest,
     res: Response,
@@ -157,9 +150,6 @@ export class AuthController {
     }
   };
 
-  /**
-   * Update user profile
-   */
   public updateProfile = async (
     req: AuthenticatedRequest,
     res: Response,
@@ -205,9 +195,6 @@ export class AuthController {
     }
   };
 
-  /**
-   * Change password
-   */
   public changePassword = async (
     req: AuthenticatedRequest,
     res: Response,
@@ -265,9 +252,6 @@ export class AuthController {
     }
   };
 
-  /**
-   * Logout (client-side token removal, server logs the action)
-   */
   public logout = async (
     req: AuthenticatedRequest,
     res: Response,
@@ -293,9 +277,6 @@ export class AuthController {
     }
   };
 
-  /**
-   * Validate authentication token
-   */
   public validateToken = async (
     req: AuthenticatedRequest,
     res: Response,
@@ -323,9 +304,6 @@ export class AuthController {
 
   // =============== ADMIN ROUTES ===============
 
-  /**
-   * Admin: Get all users
-   */
   public getAllUsers = async (
     req: AuthenticatedRequest,
     res: Response,
@@ -349,9 +327,6 @@ export class AuthController {
     }
   };
 
-  /**
-   * Admin: Create new user
-   */
   public createUser = async (
     req: AuthenticatedRequest,
     res: Response,
@@ -402,9 +377,6 @@ export class AuthController {
     }
   };
 
-  /**
-   * Admin: Update user status (activate/deactivate)
-   */
   public updateUserStatus = async (
     req: AuthenticatedRequest,
     res: Response,
@@ -455,9 +427,6 @@ export class AuthController {
     }
   };
 
-  /**
-   * Admin: Delete user
-   */
   public deleteUser = async (
     req: AuthenticatedRequest,
     res: Response,
@@ -494,9 +463,6 @@ export class AuthController {
     }
   };
 
-  /**
-   * Admin: Get user statistics
-   */
   public getUserStats = async (
     req: AuthenticatedRequest,
     res: Response,
