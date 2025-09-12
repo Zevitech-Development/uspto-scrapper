@@ -156,7 +156,7 @@ export default function JobsPage() {
 
   useEffect(() => {
     fetchJobs();
-  }, [state.selectedStatus, fetchJobs]); // ensure single fetch on mount and when tab changes
+  }, [state.selectedStatus, fetchJobs]);
 
   const getStatusBadge = (status: string) => {
     const baseClasses =

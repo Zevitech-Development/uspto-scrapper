@@ -1,119 +1,27 @@
 "use client";
 
 import React, { useState } from "react";
-import {
-  Menu,
-  Search,
-  Bell,
-  User,
-  Settings,
-  LogOut,
-  ChevronDown,
-} from "lucide-react";
+import { Menu, LogOut, ChevronDown } from "lucide-react";
 import { HeaderProps } from "@/types/dashboard";
+import { formatLastLogin, getInitials } from "@/lib/common-functions";
 
-export const Header: React.FC<HeaderProps> = ({
-  user,
-  onSidebarToggle,
-  onLogout,
-}) => {
+export const Header = ({ user, onSidebarToggle, onLogout }: HeaderProps) => {
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
-
-  const getInitials = (firstName: string, lastName: string): string => {
-    return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
-  };
-
-  const formatLastLogin = (lastLogin?: Date): string => {
-    if (!lastLogin) return "Never";
-    return new Intl.DateTimeFormat("en-US", {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    }).format(new Date(lastLogin));
-  };
 
   return (
     <header className="bg-white border-b border-gray-200 px-4 lg:px-6 py-4">
       <div className="flex items-center justify-between">
-        {/* Left side */}
         <div className="flex items-center space-x-4">
-          {/* Mobile menu button */}
           <button
             onClick={onSidebarToggle}
             className="lg:hidden p-2 rounded-md hover:bg-gray-100"
           >
             <Menu className="w-5 h-5" />
           </button>
-
-          {/* Search bar */}
-          <div className="hidden md:flex relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="h-4 w-4 text-gray-400" />
-            </div>
-            <input
-              type="text"
-              placeholder="Search jobs, serial numbers..."
-              className="block w-80 pl-9 pr-3 py-2 border border-gray-300 rounded-md text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
         </div>
 
         {/* Right side */}
         <div className="flex items-center space-x-4">
-          {/* Notifications */}
-          <div className="relative">
-            <button
-              onClick={() => setShowNotifications(!showNotifications)}
-              className="relative p-2 rounded-full hover:bg-gray-100 transition-colors"
-            >
-              <Bell className="w-5 h-5 text-gray-600" />
-              {/* Notification badge */}
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                2
-              </span>
-            </button>
-
-            {/* Notifications dropdown */}
-            {showNotifications && (
-              <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-                <div className="p-4 border-b border-gray-100">
-                  <h3 className="text-sm font-semibold text-gray-900">
-                    Notifications
-                  </h3>
-                </div>
-                <div className="max-h-64 overflow-y-auto">
-                  <div className="p-4 border-b border-gray-50 hover:bg-gray-50">
-                    <p className="text-sm text-gray-900">
-                      Job #1234 completed successfully
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">2 minutes ago</p>
-                  </div>
-                  <div className="p-4 border-b border-gray-50 hover:bg-gray-50">
-                    <p className="text-sm text-gray-900">
-                      New user registration pending
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">1 hour ago</p>
-                  </div>
-                </div>
-                <div className="p-3 border-t border-gray-100">
-                  <button className="text-sm text-blue-600 hover:text-blue-700 font-medium">
-                    View all notifications
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Click outside to close notifications */}
-            {showNotifications && (
-              <div
-                className="fixed inset-0 z-40"
-                onClick={() => setShowNotifications(false)}
-              />
-            )}
-          </div>
-
           {/* User menu */}
           <div className="relative">
             <button
@@ -158,19 +66,6 @@ export const Header: React.FC<HeaderProps> = ({
                     </div>
                   </div>
                 </div>
-
-                {/* Menu items */}
-                <div className="py-2">
-                  <button className="flex items-center space-x-3 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                    <User className="w-4 h-4" />
-                    <span>Profile Settings</span>
-                  </button>
-                  <button className="flex items-center space-x-3 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                    <Settings className="w-4 h-4" />
-                    <span>Preferences</span>
-                  </button>
-                </div>
-
                 {/* Logout */}
                 <div className="border-t border-gray-100 py-2">
                   <button

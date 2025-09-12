@@ -61,3 +61,27 @@ export interface DashboardLayoutProps {
   children: React.ReactNode;
   title?: string;
 }
+
+
+export interface AdminStats {
+  totalUsers: number;
+  activeUsers: number;
+  adminUsers: number;
+  newUsersThisMonth: number;
+  lastLoginActivity: string | null;
+}
+
+export interface QueueStats {
+  queue: {
+    waiting: number;
+    active: number;
+    completed: number;
+    failed: number;
+    delayed: number;
+  };
+  processing: {
+    rateLimitPerMinute: number;
+    estimatedTimeFor100Records: string;
+    currentQueueLength: number;
+  };
+}
