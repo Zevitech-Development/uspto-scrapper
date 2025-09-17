@@ -273,6 +273,11 @@ export class TrademarkController {
 
       const job = await this.jobQueueService.getJobStatus(jobId);
 
+      logger.info("Download request for job", {
+        jobId,
+        status: job?.status,
+      });
+
       if (!job) {
         const response: ApiResponse = {
           success: false,
@@ -283,11 +288,11 @@ export class TrademarkController {
         return;
       }
 
-      if (!job.results || job.results.length === 0) {
+      if (job.status !== "completed") {
         const response: ApiResponse = {
           success: false,
-          message: "No results available for download",
-          error: "No results available",
+          message: "Job is not completed yet",
+          error: "Job not ready for download",
         };
         res.status(400).json(response);
         return;
@@ -302,7 +307,6 @@ export class TrademarkController {
         res.status(400).json(response);
         return;
       }
-
       // Generate Excel file
       const { buffer, fileName } = this.excelService.generateResultsExcel(
         job.results,

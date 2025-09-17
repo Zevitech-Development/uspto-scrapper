@@ -44,16 +44,26 @@ export default function JobsPage() {
 
   const [pollingJobs, setPollingJobs] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    fetchJobs();
-  }, [state.selectedStatus]);
-
-  // Auto-refresh for processing jobs
+  // OPTIMIZE: Reduce polling frequency and use smart intervals
   useEffect(() => {
     if (pollingJobs.size === 0) return;
 
-    const interval = setInterval(() => {
-      pollingJobs.forEach(async (jobId) => {
+    // Use different intervals based on job status
+    const getPollingInterval = () => {
+      const hasProcessingJobs = Array.from(pollingJobs).some((jobId) => {
+        const job = state.jobs.find((j) => j.id === jobId);
+        return job?.status === "processing";
+      });
+
+      // 30 seconds for processing jobs, 60 seconds for pending
+      return hasProcessingJobs ? 30000 : 60000;
+    };
+
+    const interval = setInterval(async () => {
+      // Process jobs in batches to reduce API calls
+      const jobsToUpdate = Array.from(pollingJobs).slice(0, 5); // Max 5 at a time
+
+      for (const jobId of jobsToUpdate) {
         try {
           const response = await ApiService.getJobStatus(jobId);
           if (response.success) {
@@ -89,12 +99,18 @@ export default function JobsPage() {
           }
         } catch (error) {
           console.error(`Failed to update job ${jobId}:`, error);
+          // Remove problematic job from polling
+          setPollingJobs((prev) => {
+            const newSet = new Set(prev);
+            newSet.delete(jobId);
+            return newSet;
+          });
         }
-      });
-    }, 12000); // slowed from 5s to 12s to cut polling traffic
+      }
+    }, getPollingInterval());
 
     return () => clearInterval(interval);
-  }, [pollingJobs]);
+  }, [pollingJobs, state.jobs]);
 
   const fetchJobs = useCallback(async () => {
     setState((prev) => ({ ...prev, loading: true, error: null }));
@@ -222,7 +238,9 @@ export default function JobsPage() {
       document.body.removeChild(a);
     } catch (error) {
       console.error("Download failed:", error);
-      alert("Download failed. Please try again.");
+      const errorMessage =
+        error instanceof Error ? error.message : "Download failed";
+      alert(`Download failed: ${errorMessage}`);
     }
   };
 

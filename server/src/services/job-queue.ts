@@ -51,25 +51,60 @@ export class JobQueueService {
         username: process.env.REDIS_USERNAME!,
         password: process.env.REDIS_PASSWORD!,
         tls: {},
-        maxRetriesPerRequest: 3,
+        maxRetriesPerRequest: 2,
+        family: 4,
+        keepAlive: 30000,
+        lazyConnect: true,
       },
       settings: {
-        stalledInterval: 30 * 1000, // 30 seconds instead of default 30s
+        stalledInterval: 60 * 1000, // 30 seconds instead of default 30s
         maxStalledCount: 1,
+        retryProcessDelay: 5000,
       },
       defaultJobOptions: {
-        removeOnComplete: 10,
-        removeOnFail: 5,
-        attempts: 2,
+        removeOnComplete: 5,
+        removeOnFail: 2,
+        attempts: 1,
+        timeout: 24 * 60 * 60 * 1000,
         backoff: {
           type: "exponential",
           delay: 5000,
         },
-        timeout: 24 * 60 * 60 * 1000,
+        jobId: undefined,
       },
     });
+    queue.on("completed", this.handleJobCompleted.bind(this));
+    queue.on("failed", this.handleJobFailed.bind(this));
 
     return queue;
+  }
+
+  private async handleJobCompleted(job: Bull.Job<JobData>): Promise<void> {
+    const jobId = job.data.jobId;
+    logger.info("Job completed", {
+      jobId,
+      duration: Date.now() - job.timestamp,
+    });
+
+    // Single update operation
+    await this.updateJobStatus(jobId, "completed", {
+      completedAt: new Date(),
+      processedRecords: job.data.serialNumbers.length,
+    });
+  }
+
+  private async handleJobFailed(
+    job: Bull.Job<JobData>,
+    error: Error
+  ): Promise<void> {
+    const jobId = job?.data?.jobId;
+    if (!jobId) return;
+
+    logger.error("Job failed", error, { jobId });
+    await this.updateJobStatus(jobId, "failed", {
+      errorMessage: error.message,
+      completedAt: new Date(),
+    });
   }
 
   private setupJobProcessors(): void {
@@ -358,72 +393,55 @@ export class JobQueueService {
   ): Promise<void> {
     try {
       let existingJob = this.jobs.get(jobId);
-
-      if (!existingJob) {
-        const jobData = await this.redis.get(`job:${jobId}`);
-        if (jobData) {
-          existingJob = JSON.parse(jobData);
-        }
-      }
-
       if (!existingJob) return;
 
-      const updatedJob: ProcessingJob = {
-        ...existingJob,
-        ...updates,
-        status,
-      };
-
-      // Update memory first
+      const updatedJob: ProcessingJob = { ...existingJob, ...updates, status };
       this.jobs.set(jobId, updatedJob);
 
-      // Maintain Redis status index sets to avoid KEYS scans
-      const prevStatus = existingJob.status;
-      if (prevStatus !== status) {
-        await this.redis.srem(`job:status:${prevStatus}` as const, jobId);
-        await this.redis.sadd(`job:status:${status}` as const, jobId);
-      }
-
-      // Then update Redis
+      // OPTIMIZE: Only update Redis for final states or every 10th update
       const shouldUpdateRedis =
         status === "completed" ||
         status === "failed" ||
-        (updates.processedRecords && updates.processedRecords % 10 === 0); // Update every 10 records
+        (updates.processedRecords && updates.processedRecords % 25 === 0); // Every 25 records
 
       if (shouldUpdateRedis) {
-        await this.redis.setex(
-          `job:${jobId}`,
-          604800, // 7 days
-          JSON.stringify(updatedJob)
-        );
+        // Single Redis operation instead of multiple
+        const pipeline = this.redis.pipeline();
+
+        // Remove from old status set and add to new (only if status changed)
+        if (existingJob.status !== status) {
+          pipeline.srem(`job:status:${existingJob.status}`, jobId);
+          pipeline.sadd(`job:status:${status}`, jobId);
+        }
+
+        // Update job data with longer TTL for completed jobs
+        const ttl =
+          status === "completed" || status === "failed" ? 604800 : 3600;
+        pipeline.setex(`job:${jobId}`, ttl, JSON.stringify(updatedJob));
+
+        await pipeline.exec();
       }
 
-      // Always update MongoDB for status changes
-      const updateResult = await ProcessingJobModel.updateOne(
-        { jobId },
-        {
-          $set: {
-            status,
-            processedRecords:
-              updates.processedRecords || existingJob.processedRecords,
-            ...(updates.completedAt && { completedAt: updates.completedAt }),
-            ...(updates.errorMessage && {
-              errorMessage: updates.errorMessage,
-            }),
-            ...(status === "processing" && { updatedAt: new Date() }),
-          },
-        }
-      );
-
-      if (updateResult.matchedCount === 0) {
-        logger.warn("MongoDB update failed - job not found", { jobId, status });
-      } else {
-        logger.debug("MongoDB update successful", {
-          jobId,
-          status,
-          matched: updateResult.matchedCount,
-          modified: updateResult.modifiedCount,
-        });
+      // Update MongoDB only for status changes or completion
+      if (
+        existingJob.status !== status ||
+        status === "completed" ||
+        status === "failed"
+      ) {
+        await ProcessingJobModel.updateOne(
+          { jobId },
+          {
+            $set: {
+              status,
+              processedRecords:
+                updates.processedRecords || existingJob.processedRecords,
+              ...(updates.completedAt && { completedAt: updates.completedAt }),
+              ...(updates.errorMessage && {
+                errorMessage: updates.errorMessage,
+              }),
+            },
+          }
+        );
       }
     } catch (error) {
       logger.error("Failed to update job status", error as Error, {
@@ -456,12 +474,13 @@ export class JobQueueService {
         return; // Exit early if job is done
       }
 
+      // OPTIMIZE: Only update every 30 seconds OR every 25% progress OR on completion
       const shouldUpdate =
         !existing ||
-        now - existing.lastUpdate > 1000 ||
+        now - existing.lastUpdate > 30000 || // 30 seconds instead of 1 second
         processed === total ||
-        Math.floor((processed / total) * 20) !==
-          Math.floor((existing.processed / existing.total) * 20);
+        Math.floor((processed / total) * 4) !==
+          Math.floor((existing.processed / existing.total) * 4); // Every 25%
 
       if (shouldUpdate) {
         this.progressUpdateBuffer.set(jobId, {
@@ -470,22 +489,27 @@ export class JobQueueService {
           lastUpdate: now,
         });
 
-        // Only update to "processing" if not already completed
+        // Only update MongoDB and Redis, skip status sets
         if (
           currentJob &&
           currentJob.status !== "completed" &&
           currentJob.status !== "failed"
         ) {
-          await this.updateJobStatus(jobId, "processing", {
-            processedRecords: processed,
-          });
-        }
-      } else {
-        // Just update memory without Redis/DB
-        const job = this.jobs.get(jobId);
-        if (job && job.status !== "completed" && job.status !== "failed") {
-          job.processedRecords = processed;
-          this.jobs.set(jobId, job);
+          currentJob.processedRecords = processed;
+          this.jobs.set(jobId, currentJob);
+
+          // Update MongoDB only every 50 records or on completion
+          if (processed % 50 === 0 || processed === total) {
+            await ProcessingJobModel.updateOne(
+              { jobId },
+              {
+                $set: {
+                  processedRecords: processed,
+                  ...(processed === total && { completedAt: new Date() }),
+                },
+              }
+            );
+          }
         }
       }
     } catch (error) {
@@ -640,64 +664,44 @@ export class JobQueueService {
     status: ProcessingJob["status"]
   ): Promise<ProcessingJob[]> {
     try {
-      const jobs: ProcessingJob[] = [];
-
+      // OPTIMIZE: Use MongoDB for completed jobs (more reliable)
       if (status === "completed") {
-        // For completed jobs, get from MongoDB first (most reliable)
-        const mongoJobs = await ProcessingJobModel.find({
-          status: "completed",
-        }).sort({ completedAt: -1 });
+        const mongoJobs = await ProcessingJobModel.find({ status: "completed" })
+          .sort({ completedAt: -1 })
+          .limit(50) // Limit to prevent large queries
+          .lean(); // Use lean() for better performance
 
+        const jobs: ProcessingJob[] = [];
         for (const mongoJob of mongoJobs) {
           const fullJob = await this.getJobFromMongoDB(mongoJob.jobId);
-          if (fullJob) {
-            jobs.push(fullJob);
-            // Update cache with complete data
-            this.jobs.set(fullJob.id, fullJob);
-          }
+          if (fullJob) jobs.push(fullJob);
         }
-      } else {
-        // Use Redis status index instead of KEYS scans
-        const jobIds = await this.redis.smembers(`job:status:${status}`);
-
-        if (jobIds.length > 0) {
-          const pipeline = this.redis.pipeline();
-          for (const id of jobIds) {
-            pipeline.get(`job:${id}`);
-          }
-          const results = await pipeline.exec();
-          results?.forEach(([, value]) => {
-            if (value) {
-              const job: ProcessingJob = JSON.parse(value as string);
-
-              // Convert date strings back to Date objects
-              job.createdAt = new Date(job.createdAt);
-              if (job.completedAt) {
-                job.completedAt = new Date(job.completedAt);
-              }
-
-              if (job.status === status) {
-                jobs.push(job);
-              }
-            }
-          });
-        }
-
-        // Also check MongoDB for any missing jobs (fallback if set wasn’t updated earlier)
-        const mongoJobs = await ProcessingJobModel.find({
-          status,
-        }).sort({ createdAt: -1 });
-
-        for (const mongoJob of mongoJobs) {
-          const existingJob = jobs.find((j) => j.id === mongoJob.jobId);
-          if (!existingJob) {
-            const fullJob = await this.getJobFromMongoDB(mongoJob.jobId);
-            if (fullJob && fullJob.status === status) {
-              jobs.push(fullJob);
-            }
-          }
-        }
+        return jobs;
       }
+
+      // For active jobs, use Redis but with single pipeline
+      const pipeline = this.redis.pipeline();
+      const jobIds = await this.redis.smembers(`job:status:${status}`);
+
+      if (jobIds.length === 0) return [];
+
+      // Batch get all jobs in single pipeline
+      jobIds.forEach((id) => pipeline.get(`job:${id}`));
+      const results = await pipeline.exec();
+
+      const jobs: ProcessingJob[] = [];
+      results?.forEach(([err, value], index) => {
+        if (!err && value) {
+          try {
+            const job: ProcessingJob = JSON.parse(value as string);
+            job.createdAt = new Date(job.createdAt);
+            if (job.completedAt) job.completedAt = new Date(job.completedAt);
+            if (job.status === status) jobs.push(job);
+          } catch (parseError) {
+            logger.warn(`Failed to parse job ${jobIds[index]}`);
+          }
+        }
+      });
 
       return jobs.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     } catch (error) {
