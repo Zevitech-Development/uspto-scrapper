@@ -15,6 +15,7 @@ import config from "./config/config";
 import routes from "./routes";
 import database from "./config/database";
 import { AuthService } from "./services/auth-service";
+import { JobQueueService } from "./services/job-queue";
 
 class Server {
   private app: express.Application;
@@ -135,6 +136,10 @@ class Server {
 
       const authService = AuthService.getInstance();
       await authService.createDefaultAdmin();
+
+      // Initialize job queue service to start processing jobs
+      const jobQueueService = JobQueueService.getInstance();
+      logger.info("Job queue service initialized");
       // Create HTTP server
       this.server = createServer(this.app);
 
@@ -206,9 +211,9 @@ class Server {
 
         await database.disconnect();
 
-        // Here you would close database connections, job queues, etc.
-        // Example: await jobQueue.close();
-        // Example: await mongoose.connection.close();
+        // Close job queue connections
+        const jobQueueService = JobQueueService.getInstance();
+        await jobQueueService.close();
 
         clearTimeout(shutdownTimeout);
         logger.info("Graceful shutdown completed");

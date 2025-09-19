@@ -193,7 +193,7 @@ export interface ApiResponse<T = any> {
 export type LogLevel = "error" | "warn" | "info" | "debug";
 
 export interface LogContext {
-  jobId?: string;
+  jobId?: string | number;
   serialNumber?: string;
   userId?: string;
   action?: string;
@@ -241,6 +241,14 @@ export interface LogContext {
   isActive?: boolean;
   // Extra fields for logging
   success?: boolean;
+  waiting?: number;
+  active?: number;
+  completed?: number;
+  failed?: number;
+  processorSetup?: boolean;
+  bullJobId?: string;
+  state?: string;
+  upserted?: number;
   adminUserId?: string;
   resultsCount?: number;
   mongoStatus?: string;
