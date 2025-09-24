@@ -241,6 +241,7 @@ export interface LogContext {
   isActive?: boolean;
   // Extra fields for logging
   success?: boolean;
+  jobCount?: number;
   waiting?: number;
   active?: number;
   completed?: number;

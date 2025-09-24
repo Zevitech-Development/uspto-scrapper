@@ -3,7 +3,7 @@ import Redis from "ioredis";
 import { v4 as uuidv4 } from "uuid";
 import { USPTOService } from "./uspto-service";
 import { ProcessingJob, TrademarkData } from "../types/global-interface";
-import config from "../config/config";
+// import config from "../config/config";
 import logger from "../utils/logger";
 import { ProcessingJobModel, Trademark } from "../models/trademark.model";
 
@@ -21,7 +21,7 @@ interface JobProgress {
 
 export class JobQueueService {
   private static instance: JobQueueService;
-  private queue!: Bull.Queue<JobData>; // Using definite assignment assertion since it's initialized after Redis ready
+  private queue!: Bull.Queue<JobData>;
   private redis: Redis;
   private usptoService: USPTOService;
   private jobs: Map<string, ProcessingJob> = new Map();
@@ -30,14 +30,13 @@ export class JobQueueService {
   private isProcessorSetup = false;
 
   private constructor() {
-    // Use consistent Redis configuration
     const redisConfig = {
       port: Number(process.env.REDIS_PORT),
       host: process.env.REDIS_HOST!,
       username: process.env.REDIS_USERNAME!,
       password: process.env.REDIS_PASSWORD!,
       tls: {},
-      lazyConnect: false, // Changed to false to ensure immediate connection
+      lazyConnect: false,
       keepAlive: 30000,
       family: 4,
       connectTimeout: 10000,
@@ -46,7 +45,6 @@ export class JobQueueService {
 
     this.redis = new Redis(redisConfig);
 
-    // Enhanced Redis event handlers
     this.redis.on("error", (error) => {
       logger.error("Redis connection error", error);
     });
@@ -57,7 +55,6 @@ export class JobQueueService {
 
     this.redis.on("ready", () => {
       logger.info("Redis ready for operations");
-      // Only setup queue and processors after Redis is ready
       this.initializeQueueAfterRedisReady();
     });
 
@@ -66,7 +63,6 @@ export class JobQueueService {
     });
 
     this.usptoService = new USPTOService();
-    // Remove immediate initialization - will be done after Redis is ready
   }
 
   private initializeQueueAfterRedisReady(): void {
@@ -78,7 +74,10 @@ export class JobQueueService {
         logger.info("Queue and processors initialized after Redis ready");
       }
     } catch (error) {
-      logger.error("Failed to initialize queue after Redis ready", error as Error);
+      logger.error(
+        "Failed to initialize queue after Redis ready",
+        error as Error
+      );
     }
   }
 
@@ -97,31 +96,31 @@ export class JobQueueService {
       password: process.env.REDIS_PASSWORD!,
       tls: {},
       family: 4,
-      keepAlive: 30000,
-      lazyConnect: false, // Ensure immediate connection for Bull queue too
+      keepAlive: 300000,
+      lazyConnect: true,
+      connectTimeout: 10000,
+      commandTimeout: 5000,
+      maxRetriesPerRequest: 3,
+      retryDelayOnFailover: 100,
     };
 
     const queue = new Bull<JobData>("trademark-processing", {
       redis: redisConfig,
       settings: {
-        stalledInterval: 30 * 1000, // 30 seconds
+        stalledInterval: 5 * 60 * 1000,
         maxStalledCount: 1,
-        retryProcessDelay: 5000,
+        retryProcessDelay: 10000,
       },
       defaultJobOptions: {
-        removeOnComplete: 10, // Keep more completed jobs for debugging
-        removeOnFail: 5, // Keep more failed jobs for debugging
-        attempts: 2, // Allow one retry
-        timeout: 24 * 60 * 60 * 1000, // 24 hours
         backoff: {
           type: "exponential",
           delay: 5000,
         },
-        jobId: undefined,
+        removeOnComplete: true,
+        removeOnFail: false,
       },
     });
 
-    // Enhanced queue event handlers
     queue.on("error", (error) => {
       logger.error("Queue connection error", error);
     });
@@ -129,7 +128,6 @@ export class JobQueueService {
     queue.on("ready", () => {
       logger.info("Queue is ready and connected");
 
-      // Verify processor is working after queue is ready
       setTimeout(() => {
         this.verifyProcessorStatus();
       }, 5000);
@@ -163,11 +161,11 @@ export class JobQueueService {
 
         try {
           await this.processTrademarkJob(job);
-          logger.info("✅ JOB COMPLETED SUCCESSFULLY", {
+          logger.info("JOB COMPLETED SUCCESSFULLY", {
             jobId: job.data.jobId,
           });
         } catch (error) {
-          logger.error("❌ JOB PROCESSING FAILED", error as Error, {
+          logger.error("JOB PROCESSING FAILED", error as Error, {
             jobId: job.data.jobId,
           });
           throw error;
@@ -319,6 +317,7 @@ export class JobQueueService {
     } catch (error) {
       logger.error("Error handling job completion", error as Error, { jobId });
     }
+    this.rescheduleHealthCheckIfNeeded();
   }
 
   private async handleJobFailed(
@@ -340,6 +339,7 @@ export class JobQueueService {
         jobId,
       });
     }
+    this.rescheduleHealthCheckIfNeeded();
   }
 
   public async addTrademarkJob(
@@ -351,7 +351,9 @@ export class JobQueueService {
     try {
       // Ensure queue is initialized before adding jobs
       if (!this.queue) {
-        throw new Error("Queue not initialized yet. Please wait for Redis connection.");
+        throw new Error(
+          "Queue not initialized yet. Please wait for Redis connection."
+        );
       }
 
       // Create job record
@@ -370,6 +372,8 @@ export class JobQueueService {
       await this.redis.setex(`job:${jobId}`, 600, JSON.stringify(job));
       await this.redis.sadd("job:status:pending", jobId);
       await this.saveJobToMongoDB(jobId, userId, serialNumbers);
+
+      // this.rescheduleHealthCheckIfNeeded();
 
       const bullJob = await this.queue.add(
         {
@@ -403,6 +407,8 @@ export class JobQueueService {
         });
       }, 1000);
 
+      logger.info("Added trademark processing job...");
+      this.rescheduleHealthCheckIfNeeded(); // ✅ ADDED HERE
       return jobId;
     } catch (error) {
       logger.error("Failed to add job to queue", error as Error, { jobId });
@@ -747,9 +753,6 @@ export class JobQueueService {
     }
   }
 
-  // [Rest of the methods remain the same - getQueueStats, cancelJob, retryJob, etc.]
-  // I'll include the key methods that might have issues:
-
   public async getQueueStats(): Promise<{
     waiting: number;
     active: number;
@@ -826,30 +829,22 @@ export class JobQueueService {
   }
 
   private setupMemoryCleanup(): void {
-    // Clear existing intervals
     if (this.memoryCleanupInterval) {
       clearInterval(this.memoryCleanupInterval);
-    }
+    } 
     if (this.healthCheckInterval) {
       clearInterval(this.healthCheckInterval);
     }
 
-    // Memory cleanup every 10 minutes
     this.memoryCleanupInterval = setInterval(() => {
-      this.cleanupMemoryCache();
-    }, 10 * 60 * 1000);
+      if (this.jobs.size > 100) {
+        this.cleanupMemoryCache();
+        // logger.info("Memory cleanup performed", { jobCount: this.jobs.size });
+      }
+    }, 30 * 60 * 1000);
 
-    // Health check every 5 minutes
-    this.healthCheckInterval = setInterval(() => {
-      this.logQueueHealth();
-    }, 5 * 60 * 1000);
+    this.scheduleSmartHealthCheck();
 
-    // Initial health check
-    setTimeout(() => {
-      this.logQueueHealth();
-    }, 30 * 1000);
-
-    // Process cleanup
     process.on("exit", () => {
       this.cleanup();
     });
@@ -861,6 +856,48 @@ export class JobQueueService {
     process.on("SIGTERM", () => {
       this.cleanup();
     });
+  }
+
+  private scheduleSmartHealthCheck(): void {
+    const hasActiveWork = this.jobs.size > 0 || this.isProcessorSetup;
+
+    if (hasActiveWork) {
+      this.healthCheckInterval = setInterval(() => {
+        this.logQueueHealth();
+        this.rescheduleHealthCheckIfNeeded();
+      }, 5 * 60 * 1000);
+
+      logger.info("Active health monitoring started");
+    } else {
+      this.healthCheckInterval = setInterval(() => {
+        this.lightHealthCheck();
+        this.rescheduleHealthCheckIfNeeded();
+      }, 30 * 60 * 1000);
+      logger.info("Idle health monitoring started");
+    }
+  }
+
+  private rescheduleHealthCheckIfNeeded(): void {
+    const currentlyHasWork = this.jobs.size > 0;
+    const intervalFrequency = this.healthCheckInterval?._onTimeout || 0;
+    const isActiveInterval = intervalFrequency === 5 * 60 * 1000;
+
+    if (currentlyHasWork && !isActiveInterval) {
+      logger.info("Switching to active health monitoring");
+      this.scheduleSmartHealthCheck();
+    } else if (!currentlyHasWork && isActiveInterval) {
+      logger.info("Switching to idle health monitoring");
+      this.scheduleSmartHealthCheck();
+    }
+  }
+
+  private async lightHealthCheck(): Promise<void> {
+    try {
+      await this.redis.ping();
+      logger.debug("Light health check completed");
+    } catch (error) {
+      logger.error("Light health check failed", error as Error);
+    }
   }
 
   private cleanup(): void {

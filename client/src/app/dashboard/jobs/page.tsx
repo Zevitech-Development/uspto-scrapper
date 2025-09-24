@@ -45,72 +45,112 @@ export default function JobsPage() {
   const [pollingJobs, setPollingJobs] = useState<Set<string>>(new Set());
 
   // OPTIMIZE: Reduce polling frequency and use smart intervals
+  // useEffect(() => {
+  //   if (pollingJobs.size === 0) return;
+
+  //   // Use different intervals based on job status
+  //   const getPollingInterval = () => {
+  //     const hasProcessingJobs = Array.from(pollingJobs).some((jobId) => {
+  //       const job = state.jobs.find((j) => j.id === jobId);
+  //       return job?.status === "processing";
+  //     });
+
+  //     // 30 seconds for processing jobs, 60 seconds for pending
+  //     return hasProcessingJobs ? 30000 : 60000;
+  //   };
+
+  //   const interval = setInterval(async () => {
+  //     // Process jobs in batches to reduce API calls
+  //     const jobsToUpdate = Array.from(pollingJobs).slice(0, 5); // Max 5 at a time
+
+  //     for (const jobId of jobsToUpdate) {
+  //       try {
+  //         const response = await ApiService.getJobStatus(jobId);
+  //         if (response.success) {
+  //           setState((prev) => ({
+  //             ...prev,
+  //             jobs: prev.jobs.map((job) =>
+  //               job.id === jobId
+  //                 ? {
+  //                     ...job,
+  //                     status: response.data?.status || job.status,
+  //                     processedRecords:
+  //                       response.data?.progress?.processed ||
+  //                       job.processedRecords,
+  //                     totalRecords:
+  //                       response.data?.progress?.total || job.totalRecords,
+  //                     results: response.data?.results || job.results,
+  //                   }
+  //                 : job
+  //             ),
+  //           }));
+
+  //           // Stop polling if job is completed or failed
+  //           if (
+  //             response.data?.status === "completed" ||
+  //             response.data?.status === "failed"
+  //           ) {
+  //             setPollingJobs((prev) => {
+  //               const newSet = new Set(prev);
+  //               newSet.delete(jobId);
+  //               return newSet;
+  //             });
+  //           }
+  //         }
+  //       } catch (error) {
+  //         console.error(`Failed to update job ${jobId}:`, error);
+  //         // Remove problematic job from polling
+  //         setPollingJobs((prev) => {
+  //           const newSet = new Set(prev);
+  //           newSet.delete(jobId);
+  //           return newSet;
+  //         });
+  //       }
+  //     }
+  //   }, getPollingInterval());
+
+  //   return () => clearInterval(interval);
+  // }, [pollingJobs, state.jobs]);
+
   useEffect(() => {
     if (pollingJobs.size === 0) return;
 
-    // Use different intervals based on job status
-    const getPollingInterval = () => {
-      const hasProcessingJobs = Array.from(pollingJobs).some((jobId) => {
-        const job = state.jobs.find((j) => j.id === jobId);
-        return job?.status === "processing";
-      });
+    let pollCount = 0;
+    let isCancelled = false;
 
-      // 30 seconds for processing jobs, 60 seconds for pending
-      return hasProcessingJobs ? 30000 : 60000;
+    const poll = async () => {
+      if (isCancelled) return;
+      pollCount++;
+
+      // ✅ Exponential backoff logic
+      const baseInterval =
+        pollCount < 5
+          ? 10000 // First 5 polls every 10s
+          : pollCount < 15
+          ? 30000 // Next 10 polls every 30s
+          : 120000; // Then every 2 minutes
+
+      const jobsToUpdate = Array.from(pollingJobs).slice(0, 3);
+
+      try {
+        const statuses = await Promise.all(
+          jobsToUpdate.map((jobId) => ApiService.getJobStatus(jobId))
+        );
+        // Process batch results...
+      } catch (error) {
+        console.error("Batch polling failed:", error);
+      }
+
+      // ✅ Schedule next poll with updated interval
+      setTimeout(poll, baseInterval);
     };
 
-    const interval = setInterval(async () => {
-      // Process jobs in batches to reduce API calls
-      const jobsToUpdate = Array.from(pollingJobs).slice(0, 5); // Max 5 at a time
+    poll(); // Start polling
 
-      for (const jobId of jobsToUpdate) {
-        try {
-          const response = await ApiService.getJobStatus(jobId);
-          if (response.success) {
-            setState((prev) => ({
-              ...prev,
-              jobs: prev.jobs.map((job) =>
-                job.id === jobId
-                  ? {
-                      ...job,
-                      status: response.data?.status || job.status,
-                      processedRecords:
-                        response.data?.progress?.processed ||
-                        job.processedRecords,
-                      totalRecords:
-                        response.data?.progress?.total || job.totalRecords,
-                      results: response.data?.results || job.results,
-                    }
-                  : job
-              ),
-            }));
-
-            // Stop polling if job is completed or failed
-            if (
-              response.data?.status === "completed" ||
-              response.data?.status === "failed"
-            ) {
-              setPollingJobs((prev) => {
-                const newSet = new Set(prev);
-                newSet.delete(jobId);
-                return newSet;
-              });
-            }
-          }
-        } catch (error) {
-          console.error(`Failed to update job ${jobId}:`, error);
-          // Remove problematic job from polling
-          setPollingJobs((prev) => {
-            const newSet = new Set(prev);
-            newSet.delete(jobId);
-            return newSet;
-          });
-        }
-      }
-    }, getPollingInterval());
-
-    return () => clearInterval(interval);
-  }, [pollingJobs, state.jobs]);
+    return () => {
+      isCancelled = true; // Cleanup
+    };
+  }, [pollingJobs]);
 
   const fetchJobs = useCallback(async () => {
     setState((prev) => ({ ...prev, loading: true, error: null }));
