@@ -138,7 +138,8 @@ class Server {
       await authService.createDefaultAdmin();
 
       // Initialize job queue service to start processing jobs
-      const jobQueueService = JobQueueService.getInstance();
+      JobQueueService.getInstance();
+      await new Promise(resolve => setTimeout(resolve, 2000));
       logger.info("Job queue service initialized");
       // Create HTTP server
       this.server = createServer(this.app);
@@ -244,7 +245,6 @@ class Server {
       shutdown("unhandledRejection");
     });
   }
-
 
   public getApp(): express.Application {
     return this.app;

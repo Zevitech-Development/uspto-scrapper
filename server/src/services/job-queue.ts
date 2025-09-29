@@ -37,13 +37,15 @@ export class JobQueueService {
       password: process.env.REDIS_PASSWORD!,
       tls: {},
       lazyConnect: false,
-      keepAlive: 30000,
       family: 4,
-      connectTimeout: 10000,
-      commandTimeout: 5000,
+      connectTimeout: 30000,
+      commandTimeout: 10000,
+      maxRetriesPerRequest: null, // Keep this for Upstash
+      enableReadyCheck: false, // Keep this for Upstash
     };
 
     this.redis = new Redis(redisConfig);
+    this.usptoService = new USPTOService();
 
     this.redis.on("error", (error) => {
       logger.error("Redis connection error", error);
@@ -53,31 +55,46 @@ export class JobQueueService {
       logger.info("Redis connected successfully");
     });
 
+    // ✅ Initialize ONLY when ready
     this.redis.on("ready", () => {
       logger.info("Redis ready for operations");
-      this.initializeQueueAfterRedisReady();
+
+      if (!this.queue) {
+        try {
+          this.initializeQueue();
+        } catch (error) {
+          logger.error("Failed to initialize queue", error as Error);
+        }
+      }
     });
 
     this.redis.on("close", () => {
       logger.warn("Redis connection closed");
     });
-
-    this.usptoService = new USPTOService();
   }
 
-  private initializeQueueAfterRedisReady(): void {
+  private initializeQueue(): void {
     try {
-      if (!this.queue) {
-        this.queue = this.createQueue();
+      this.queue = this.createQueue();
+
+      // Wait for queue to be ready before setting up processors
+      this.queue.on("ready", () => {
+        if (!this.isProcessorSetup) {
+          logger.info("Queue is ready, setting up processors...");
+          this.setupJobProcessors();
+        }
+      });
+
+      // Also try to set up processors immediately in case queue is already ready
+      if (!this.isProcessorSetup) {
         this.setupJobProcessors();
-        this.setupMemoryCleanup();
-        logger.info("Queue and processors initialized after Redis ready");
       }
+
+      this.setupMemoryCleanup();
+      logger.info("Queue and processors initialized");
     } catch (error) {
-      logger.error(
-        "Failed to initialize queue after Redis ready",
-        error as Error
-      );
+      logger.error("Failed to initialize queue", error as Error);
+      throw error;
     }
   }
 
@@ -89,6 +106,7 @@ export class JobQueueService {
   }
 
   private createQueue(): Bull.Queue<JobData> {
+    // Simplified Redis config for Upstash compatibility
     const redisConfig = {
       port: Number(process.env.REDIS_PORT),
       host: process.env.REDIS_HOST!,
@@ -96,28 +114,28 @@ export class JobQueueService {
       password: process.env.REDIS_PASSWORD!,
       tls: {},
       family: 4,
-      keepAlive: 300000,
-      lazyConnect: true,
-      connectTimeout: 10000,
-      commandTimeout: 5000,
-      maxRetriesPerRequest: 3,
-      retryDelayOnFailover: 100,
+      maxRetriesPerRequest: null,
+      enableReadyCheck: false,
+      lazyConnect: false, // Changed to false for immediate connection
+      connectTimeout: 30000, // Increased timeout
+      commandTimeout: 10000,
     };
 
     const queue = new Bull<JobData>("trademark-processing", {
       redis: redisConfig,
       settings: {
-        stalledInterval: 5 * 60 * 1000,
-        maxStalledCount: 1,
-        retryProcessDelay: 10000,
+        stalledInterval: 30 * 1000, // Reduced to 30 seconds for faster detection
+        maxStalledCount: 3,
+        retryProcessDelay: 5000,
       },
       defaultJobOptions: {
         backoff: {
           type: "exponential",
-          delay: 5000,
+          delay: 2000,
         },
-        removeOnComplete: true,
-        removeOnFail: false,
+        removeOnComplete: 10, // Keep last 10 completed jobs
+        removeOnFail: 50, // Keep last 50 failed jobs for debugging
+        attempts: 3, // Allow retries
       },
     });
 
@@ -127,10 +145,6 @@ export class JobQueueService {
 
     queue.on("ready", () => {
       logger.info("Queue is ready and connected");
-
-      setTimeout(() => {
-        this.verifyProcessorStatus();
-      }, 5000);
     });
 
     queue.on("paused", () => {
@@ -146,59 +160,67 @@ export class JobQueueService {
 
   private setupJobProcessors(): void {
     if (this.isProcessorSetup) {
-      logger.warn("Processor already setup, skipping duplicate setup");
+      logger.info("Processor already set up, skipping...");
       return;
     }
 
     logger.info("Setting up job processors...");
 
     try {
-      this.queue.process(1, async (job) => {
-        logger.info("🔥 PROCESSING JOB STARTED", {
+      if (!this.queue) {
+        throw new Error("Queue is not initialized");
+      }
+
+      logger.info("Registering processor with concurrency: 1", {
+        queueExists: !!this.queue,
+        isProcessorSetup: this.isProcessorSetup,
+      });
+
+      // Register the processor for trademark processing jobs
+      this.queue.process('trademark-processing', 1, async (job) => {
+        logger.info("🚀 PROCESSING JOB STARTED", {
           jobId: job.data.jobId,
           bullJobId: job.id as string,
+          serialNumbers: job.data.serialNumbers.length,
         });
 
         try {
           await this.processTrademarkJob(job);
-          logger.info("JOB COMPLETED SUCCESSFULLY", {
+          logger.info("✅ JOB COMPLETED SUCCESSFULLY", {
             jobId: job.data.jobId,
           });
         } catch (error) {
-          logger.error("JOB PROCESSING FAILED", error as Error, {
+          logger.error("❌ JOB PROCESSING FAILED", error as Error, {
             jobId: job.data.jobId,
           });
           throw error;
         }
       });
 
-      // Setup event listeners (but avoid duplicates)
+      // Setup event listeners
       this.setupQueueEventListeners();
 
       this.isProcessorSetup = true;
       logger.info("✅ Job processor registered successfully");
+
+      // Force process any waiting jobs
+      this.queue.resume().catch((err) => {
+        logger.warn("Failed to resume queue (might already be running)", err);
+      });
     } catch (error) {
-      logger.error("Failed to setup job processor", error as Error);
+      logger.error("❌ Failed to setup job processor", error as Error);
       throw error;
     }
   }
 
   private setupQueueEventListeners(): void {
-    // Remove existing listeners to avoid duplicates
-    this.queue.removeAllListeners("completed");
-    this.queue.removeAllListeners("failed");
-    this.queue.removeAllListeners("progress");
-    this.queue.removeAllListeners("stalled");
-    this.queue.removeAllListeners("waiting");
-    this.queue.removeAllListeners("active");
-
     // Job lifecycle events
     this.queue.on("waiting", (jobId) => {
-      logger.info("📋 Job waiting for processing", { jobId });
+      logger.info("Job waiting for processing", { jobId });
     });
 
     this.queue.on("active", (job) => {
-      logger.info("🚀 Job started processing", {
+      logger.info("Job started processing", {
         jobId: job.data.jobId,
         bullJobId: job.id as string,
       });
@@ -350,10 +372,25 @@ export class JobQueueService {
 
     try {
       // Ensure queue is initialized before adding jobs
+      let attempts = 0;
+      while (!this.queue && attempts < 50) {
+        await new Promise((resolve) => setTimeout(resolve, 100)); // Wait 100ms
+        attempts++;
+      }
+
       if (!this.queue) {
         throw new Error(
           "Queue not initialized yet. Please wait for Redis connection."
         );
+      }
+
+      // Ensure processor is set up
+      if (!this.isProcessorSetup) {
+        logger.warn("⚠️ Processor not set up yet, attempting to set up...");
+        this.setupJobProcessors();
+
+        // Wait a bit for processor setup
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       }
 
       // Create job record
@@ -373,9 +410,8 @@ export class JobQueueService {
       await this.redis.sadd("job:status:pending", jobId);
       await this.saveJobToMongoDB(jobId, userId, serialNumbers);
 
-      // this.rescheduleHealthCheckIfNeeded();
-
       const bullJob = await this.queue.add(
+        'trademark-processing',
         {
           jobId,
           serialNumbers,
@@ -384,31 +420,21 @@ export class JobQueueService {
         {
           delay: 0,
           priority: 0,
+          attempts: 3,
         }
       );
 
-      logger.info("Added trademark processing job to queue", {
+      logger.info("✅ Added trademark processing job to queue", {
         action: "job_added",
         jobId,
         bullJobId: bullJob.id as string,
         totalRecords: serialNumbers.length,
+        isProcessorSetup: this.isProcessorSetup,
       });
 
-      // Verify job was added correctly
-      setTimeout(async () => {
-        const bullJobCheck = await this.queue.getJob(bullJob.id!);
-        const state = bullJobCheck
-          ? await bullJobCheck.getState()
-          : "not found";
-        logger.info("Job verification", {
-          jobId,
-          bullJobId: bullJob.id as string,
-          state,
-        });
-      }, 1000);
+      // Debug queue status after adding job
+      setTimeout(() => this.debugQueueStatus(), 2000);
 
-      logger.info("Added trademark processing job...");
-      this.rescheduleHealthCheckIfNeeded(); // ✅ ADDED HERE
       return jobId;
     } catch (error) {
       logger.error("Failed to add job to queue", error as Error, { jobId });
@@ -566,6 +592,55 @@ export class JobQueueService {
     }
   }
 
+  public async debugQueueStatus(): Promise<void> {
+    try {
+      if (!this.queue) {
+        logger.error("❌ Queue is not initialized");
+        return;
+      }
+
+      const [waiting, active, completed, failed, delayed, paused] =
+        await Promise.all([
+          this.queue.getWaiting(),
+          this.queue.getActive(),
+          this.queue.getCompleted(),
+          this.queue.getFailed(),
+          this.queue.getDelayed(),
+          this.queue.isPaused(),
+        ]);
+
+      logger.info("🔍 Queue Status Debug", {
+        isProcessorSetup: this.isProcessorSetup,
+        isPaused: paused,
+        waiting: waiting.length,
+        active: active.length,
+        completed: completed.length,
+        failed: failed.length,
+        delayed: delayed.length,
+        waitingJobs: waiting.slice(0, 5).map((job) => ({
+          id: job.id,
+          jobId: job.data?.jobId,
+          createdAt: new Date(job.timestamp).toISOString(),
+        })),
+        activeJobs: active.slice(0, 5).map((job) => ({
+          id: job.id,
+          jobId: job.data?.jobId,
+          processedOn: job.processedOn
+            ? new Date(job.processedOn).toISOString()
+            : null,
+        })),
+      });
+
+      // Try to resume if paused
+      if (paused) {
+        logger.info("🔄 Queue is paused, attempting to resume...");
+        await this.queue.resume();
+      }
+    } catch (error) {
+      logger.error("❌ Error debugging queue status", error as Error);
+    }
+  }
+
   private async updateJobStatus(
     jobId: string,
     status: ProcessingJob["status"],
@@ -583,12 +658,12 @@ export class JobQueueService {
       const updatedJob: ProcessingJob = { ...existingJob, ...updates, status };
       this.jobs.set(jobId, updatedJob);
 
-      // Update Redis for important state changes
+      // ✅ Only update Redis for major state changes
       const shouldUpdateRedis =
         status === "completed" ||
         status === "failed" ||
-        status === "processing" ||
-        (updates.processedRecords && updates.processedRecords % 25 === 0);
+        (existingJob.status === "pending" && status === "processing") ||
+        (updates.processedRecords && updates.processedRecords % 50 === 0);
 
       if (shouldUpdateRedis) {
         const pipeline = this.redis.pipeline();
@@ -659,13 +734,12 @@ export class JobQueueService {
         return;
       }
 
-      // Throttle updates
       const shouldUpdate =
         !existing ||
-        now - existing.lastUpdate > 30000 || // 30 seconds
+        now - existing.lastUpdate > 60000 ||
         processed === total ||
-        Math.floor((processed / total) * 4) !==
-          Math.floor((existing.processed / existing.total) * 4); // Every 25%
+        Math.floor((processed / total) * 10) !==
+          Math.floor((existing.processed / existing.total) * 10);
 
       if (shouldUpdate) {
         this.progressUpdateBuffer.set(jobId, {
@@ -831,7 +905,7 @@ export class JobQueueService {
   private setupMemoryCleanup(): void {
     if (this.memoryCleanupInterval) {
       clearInterval(this.memoryCleanupInterval);
-    } 
+    }
     if (this.healthCheckInterval) {
       clearInterval(this.healthCheckInterval);
     }
@@ -865,15 +939,15 @@ export class JobQueueService {
       this.healthCheckInterval = setInterval(() => {
         this.logQueueHealth();
         this.rescheduleHealthCheckIfNeeded();
-      }, 5 * 60 * 1000);
+      }, 30 * 60 * 1000); // ✅ Changed from 5 minutes to 30 minutes
 
-      logger.info("Active health monitoring started");
+      logger.info("Active health monitoring started (30 min interval)");
     } else {
       this.healthCheckInterval = setInterval(() => {
         this.lightHealthCheck();
         this.rescheduleHealthCheckIfNeeded();
-      }, 30 * 60 * 1000);
-      logger.info("Idle health monitoring started");
+      }, 60 * 60 * 1000); // ✅ Changed from 30 minutes to 60 minutes
+      logger.info("Idle health monitoring started (60 min interval)");
     }
   }
 
@@ -1222,8 +1296,53 @@ export class JobQueueService {
       const cutoffTime = new Date(Date.now() - olderThanHours * 60 * 60 * 1000);
       let cleanedCount = 0;
 
-      // Get all job keys from Redis
-      const jobKeys = await this.redis.keys("job:*");
+      let cursor = "0";
+      const jobKeys: string[] = [];
+
+      do {
+        const result = await this.redis.scan(
+          cursor,
+          "MATCH",
+          "job:*",
+          "COUNT",
+          "100"
+        );
+        cursor = result[0];
+        jobKeys.push(...result[1]);
+      } while (cursor !== "0");
+
+      if (jobKeys.length > 0) {
+        const pipeline = this.redis.pipeline();
+        jobKeys.forEach((key) => pipeline.get(key));
+        const results = await pipeline.exec();
+
+        const toDelete: string[] = [];
+
+        results?.forEach(([err, jobData], index) => {
+          if (!err && jobData) {
+            const job: ProcessingJob = JSON.parse(jobData as string);
+            const jobDate = new Date(job.completedAt || job.createdAt);
+
+            if (
+              jobDate < cutoffTime &&
+              ["completed", "failed"].includes(job.status)
+            ) {
+              toDelete.push(jobKeys[index]);
+            }
+          }
+        });
+
+        if (toDelete.length > 0) {
+          const deletePipeline = this.redis.pipeline();
+          toDelete.forEach((key) => {
+            deletePipeline.del(key);
+            const jobId = key.replace("job:", "");
+            this.jobs.delete(jobId);
+          });
+          await deletePipeline.exec();
+          cleanedCount = toDelete.length;
+        }
+      }
 
       for (const key of jobKeys) {
         const jobData = await this.redis.get(key);

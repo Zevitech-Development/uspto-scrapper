@@ -1,3 +1,5 @@
+import Bull from "bull";
+
 export interface TrademarkData {
   serialNumber: string;
   ownerName: string | null;
@@ -224,6 +226,7 @@ export interface LogContext {
   cleanedCount?: number;
   olderThanHours?: number;
   count?: number;
+  delayed?: number;
   path?: string;
   ip?: string;
   userAgent?: string;
@@ -241,6 +244,20 @@ export interface LogContext {
   isActive?: boolean;
   // Extra fields for logging
   success?: boolean;
+  waitingJobs?: {
+    id: Bull.JobId;
+    jobId: string;
+    createdAt: string;
+  }[];
+
+  activeJobs?: {
+    id: Bull.JobId;
+    jobId: string;
+    processedOn: string | null;
+  }[];
+  queueExists?: boolean;
+  isProcessorSetup?: boolean;
+  isPaused?: boolean;
   jobCount?: number;
   waiting?: number;
   active?: number;

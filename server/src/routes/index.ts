@@ -4,6 +4,7 @@ import { AuthMiddleware } from "../middleware/auth-middleware";
 import authRoutes from "./auth-route";
 import { Router } from "express";
 import multer from "multer";
+import rateLimit from "express-rate-limit";
 
 // Configure multer for file uploads
 const upload = multer({
@@ -50,6 +51,18 @@ router.use("/auth", authRoutes);
 
 // Authentication middleware for all routes below
 router.use(AuthMiddleware.authenticate);
+
+const jobStatusLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 30, // 30 requests per minute (one every 2 seconds)
+  message: {
+    success: false,
+    message: "Too many status requests, please slow down polling",
+    error: "Rate limit exceeded",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // Job status and monitoring routes (NO RATE LIMITING - high frequency polling)
 router.get("/jobs/status/:status", trademarkController.getJobsByStatus);
