@@ -44,8 +44,6 @@ export default function JobsPage() {
 
   const [pollingJobs, setPollingJobs] = useState<Set<string>>(new Set());
 
- 
-
   useEffect(() => {
     if (pollingJobs.size === 0) return;
 
@@ -55,14 +53,14 @@ export default function JobsPage() {
     const poll = async () => {
       if (isCancelled) return;
       pollCount++;
-
-      // ✅ Exponential backoff logic
       const baseInterval =
-        pollCount < 5
-          ? 10000 // First 5 polls every 10s
-          : pollCount < 15
-          ? 30000 // Next 10 polls every 30s
-          : 120000; // Then every 2 minutes
+        pollCount < 10
+          ? 3000
+          : pollCount < 20
+          ? 5000
+          : pollCount < 40
+          ? 15000
+          : 60000;
 
       const jobsToUpdate = Array.from(pollingJobs).slice(0, 3);
 
@@ -70,7 +68,54 @@ export default function JobsPage() {
         const statuses = await Promise.all(
           jobsToUpdate.map((jobId) => ApiService.getJobStatus(jobId))
         );
-        // Process batch results...
+
+        // Process batch results and update state
+        if (statuses.length > 0) {
+          setState((prev) => {
+            const updatedJobs = prev.jobs.map((job) => {
+              const statusUpdate = statuses.find(
+                (status) => status.data?.jobId === job.id
+              );
+
+              if (statusUpdate?.data) {
+                const jobData = statusUpdate.data;
+
+                // Create updated job object with the correct structure
+                const updatedJob: ProcessingJob = {
+                  id: jobData.jobId,
+                  status: jobData.status,
+                  totalRecords: jobData.progress.total,
+                  processedRecords: jobData.progress.processed,
+                  results: jobData.results || job.results,
+                  serialNumbers: job.serialNumbers, // Keep original serial numbers
+                  createdAt: jobData.createdAt,
+                  completedAt: jobData.completedAt,
+                  errorMessage: jobData.errorMessage,
+                };
+
+                // Remove from polling if job is no longer processing
+                if (
+                  updatedJob.status !== "processing" &&
+                  updatedJob.status !== "pending"
+                ) {
+                  setPollingJobs((prevPolling) => {
+                    const newPolling = new Set(prevPolling);
+                    newPolling.delete(job.id);
+                    return newPolling;
+                  });
+                }
+
+                return updatedJob;
+              }
+              return job;
+            });
+
+            return {
+              ...prev,
+              jobs: updatedJobs,
+            };
+          });
+        }
       } catch (error) {
         console.error("Batch polling failed:", error);
       }
@@ -79,7 +124,7 @@ export default function JobsPage() {
       setTimeout(poll, baseInterval);
     };
 
-    poll(); // Start polling
+    poll();
 
     return () => {
       isCancelled = true; // Cleanup

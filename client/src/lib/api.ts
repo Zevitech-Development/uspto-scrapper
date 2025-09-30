@@ -124,7 +124,7 @@ class ApiService {
           email: string;
           firstName: string;
           lastName: string;
-          role: string;
+          role: "admin" | "user";
           isActive: boolean;
           createdAt: string;
         }>;

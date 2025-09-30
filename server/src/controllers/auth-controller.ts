@@ -315,9 +315,24 @@ export class AuthController {
 
       const result = await this.authService.getAllUsers(page, limit);
 
+      // Transform MongoDB _id to id for client compatibility
+      const transformedResult = {
+        ...result,
+        users: result.users.map(user => ({
+          id: user._id.toString(),
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role,
+          isActive: user.isActive,
+          createdAt: user.createdAt,
+          lastLogin: user.lastLogin
+        }))
+      };
+
       const response: ApiResponse = {
         success: true,
-        data: result,
+        data: transformedResult,
         message: "Users retrieved successfully",
       };
 

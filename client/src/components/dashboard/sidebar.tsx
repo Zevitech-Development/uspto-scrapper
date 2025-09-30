@@ -43,43 +43,39 @@ const getMenuItems = (userRole: "admin" | "user"): MenuItem[] => {
   if (userRole === "admin") {
     return [
       ...commonItems,
-      {
-        id: "analytics",
-        label: "Analytics",
-        icon: TrendingUp,
-        href: "/dashboard/analytics",
-      },
+      // {
+      //   id: "analytics",
+      //   label: "Analytics",
+      //   icon: TrendingUp,
+      //   href: "/dashboard/analytics",
+      // },
       {
         id: "users",
         label: "User Management",
         icon: Users,
         href: "/dashboard/users",
       },
-      {
-        id: "settings",
-        label: "System Settings",
-        icon: Settings,
-        href: "/dashboard/settings",
-      },
+      // {
+      //   id: "settings",
+      //   label: "System Settings",
+      //   icon: Settings,
+      //   href: "/dashboard/settings",
+      // },
     ];
   }
 
   return [
     ...commonItems,
-    {
-      id: "settings",
-      label: "Settings",
-      icon: Settings,
-      href: "/dashboard/settings",
-    },
+    // {
+    //   id: "settings",
+    //   label: "Settings",
+    //   icon: Settings,
+    //   href: "/dashboard/settings",
+    // },
   ];
 };
 
-export const Sidebar: React.FC<SidebarProps> = ({
-  isOpen,
-  onToggle,
-  userRole,
-}) => {
+export const Sidebar = ({ isOpen, onToggle, userRole }: SidebarProps) => {
   const pathname = usePathname();
 
   // Get the menu items for this role
@@ -94,7 +90,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <>
-      {/* Mobile backdrop */}
       {isOpen && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
@@ -102,7 +97,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         />
       )}
 
-      {/* Sidebar */}
       <div
         className={cn(
           "fixed left-0 top-0 h-full bg-white border-r border-gray-200 z-50 transition-transform duration-300 ease-in-out",
@@ -110,7 +104,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
-        {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
@@ -122,7 +115,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           </div>
 
-          {/* Mobile close button */}
           <button
             onClick={onToggle}
             className="lg:hidden p-2 rounded-md hover:bg-gray-100"
@@ -131,7 +123,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
 
-        {/* Navigation */}
         <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
           {menuItems.map((item) => {
             const Icon = item.icon;
@@ -165,7 +156,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </nav>
 
-        {/* User Role Badge */}
         <div className="px-4 py-4 border-t border-gray-200">
           <div className="flex items-center space-x-3 px-3 py-2">
             <div
