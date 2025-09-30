@@ -6,7 +6,6 @@ import { DashboardLayout } from '@/components/dashboard/dashboard-layout';
 import AdminOverView from '@/components/dashboard/admin-overview';
 import UserOverView from '@/components/dashboard/user-dashboard/user-overview';
 
-
 export default function DashboardPage() {
   const { user } = useAuth();
 

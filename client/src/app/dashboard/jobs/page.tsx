@@ -49,32 +49,52 @@ export default function JobsPage() {
 
     let pollCount = 0;
     let isCancelled = false;
+    let timeoutId: NodeJS.Timeout | null = null; // ✅ Track timeout for cleanup
 
     const poll = async () => {
       if (isCancelled) return;
+
       pollCount++;
+
+      // ✅ Adaptive polling interval based on poll count
       const baseInterval =
         pollCount < 10
-          ? 3000
+          ? 3000 // First 30 seconds: every 3 seconds
           : pollCount < 20
-          ? 5000
+          ? 5000 // Next 50 seconds: every 5 seconds
           : pollCount < 40
-          ? 15000
-          : 60000;
+          ? 15000 // Next 5 minutes: every 15 seconds
+          : 60000; // After that: every 60 seconds
 
-      const jobsToUpdate = Array.from(pollingJobs).slice(0, 3);
+      // ✅ Get up to 5 jobs to poll (increased from 3 for better responsiveness)
+      const jobsToUpdate = Array.from(pollingJobs).slice(0, 5);
+
+      // ✅ Skip if no jobs to poll
+      if (jobsToUpdate.length === 0) {
+        timeoutId = setTimeout(poll, baseInterval);
+        return;
+      }
 
       try {
+        // ✅ Poll with individual error handling
         const statuses = await Promise.all(
-          jobsToUpdate.map((jobId) => ApiService.getJobStatus(jobId))
+          jobsToUpdate.map((jobId) =>
+            ApiService.getJobStatus(jobId).catch((err) => {
+              console.error(`Failed to poll job ${jobId}:`, err);
+              return null; // Return null instead of throwing
+            })
+          )
         );
 
+        // ✅ Filter out failed requests
+        const validStatuses = statuses.filter((status) => status !== null);
+
         // Process batch results and update state
-        if (statuses.length > 0) {
+        if (validStatuses.length > 0) {
           setState((prev) => {
             const updatedJobs = prev.jobs.map((job) => {
-              const statusUpdate = statuses.find(
-                (status) => status.data?.jobId === job.id
+              const statusUpdate = validStatuses.find(
+                (status) => status?.data?.jobId === job.id
               );
 
               if (statusUpdate?.data) {
@@ -93,16 +113,11 @@ export default function JobsPage() {
                   errorMessage: jobData.errorMessage,
                 };
 
-                // Remove from polling if job is no longer processing
-                if (
-                  updatedJob.status !== "processing" &&
-                  updatedJob.status !== "pending"
-                ) {
-                  setPollingJobs((prevPolling) => {
-                    const newPolling = new Set(prevPolling);
-                    newPolling.delete(job.id);
-                    return newPolling;
-                  });
+                // ✅ Log status changes for debugging
+                if (job.status !== updatedJob.status) {
+                  console.log(
+                    `Job ${job.id} status changed: ${job.status} → ${updatedJob.status}`
+                  );
                 }
 
                 return updatedJob;
@@ -118,18 +133,49 @@ export default function JobsPage() {
         }
       } catch (error) {
         console.error("Batch polling failed:", error);
+        // Continue polling even if there's an error
       }
 
-      // ✅ Schedule next poll with updated interval
-      setTimeout(poll, baseInterval);
+      // ✅ Schedule next poll with proper cleanup check
+      if (!isCancelled) {
+        timeoutId = setTimeout(poll, baseInterval);
+      }
     };
 
+    // Start polling
     poll();
 
+    // ✅ Cleanup function
     return () => {
-      isCancelled = true; // Cleanup
+      isCancelled = true;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
     };
   }, [pollingJobs]);
+
+  useEffect(() => {
+    const activeJobs = state.jobs
+      .filter((job) => job.status === "pending" || job.status === "processing")
+      .map((job) => job.id);
+
+    const currentPollingIds = Array.from(pollingJobs).sort().join(",");
+    const newPollingIds = activeJobs.sort().join(",");
+
+    if (currentPollingIds !== newPollingIds) {
+      if (activeJobs.length > 0) {
+        console.log(
+          `Updating polling set: ${activeJobs.length} active jobs`,
+          activeJobs
+        );
+        setPollingJobs(new Set(activeJobs));
+      } else if (pollingJobs.size > 0) {
+        console.log("Clearing polling set: no active jobs");
+        setPollingJobs(new Set());
+      }
+    }
+  }, [state.jobs, pollingJobs]);
 
   const fetchJobs = useCallback(async () => {
     setState((prev) => ({ ...prev, loading: true, error: null }));
@@ -153,16 +199,20 @@ export default function JobsPage() {
           ...(failed.data?.jobs || []),
         ];
 
-        // Start polling only for processing jobs (not pending) to reduce load
-        const processingJobIds =
-          processing.data?.jobs?.map((job) => job.id) || [];
-        setPollingJobs(new Set(processingJobIds));
+        const activeJobIds = [
+          ...(pending.data?.jobs?.map((job) => job.id) || []),
+          ...(processing.data?.jobs?.map((job) => job.id) || []),
+        ];
+        setPollingJobs(new Set(activeJobIds));
       } else {
         const response = await ApiService.getJobsByStatus(state.selectedStatus);
         allJobs = response.data?.jobs || [];
 
         // Start polling only when viewing processing jobs
-        if (state.selectedStatus === "processing") {
+        if (
+          state.selectedStatus === "processing" ||
+          state.selectedStatus === "pending"
+        ) {
           setPollingJobs(new Set(allJobs.map((job) => job.id)));
         } else {
           setPollingJobs(new Set());
