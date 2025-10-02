@@ -1790,6 +1790,41 @@ export class JobQueueService {
     }
   }
 
+  public async getJobsByStatusForUser(
+    status: ProcessingJob["status"],
+    userId: string
+  ): Promise<ProcessingJob[]> {
+    try {
+      // For users, only return jobs assigned to them with the specified status
+      const mongoJobs = await ProcessingJobModel.find({
+        assignedTo: new mongoose.Types.ObjectId(userId),
+        status: status,
+      })
+        .sort({ assignedAt: -1 })
+        .lean();
+
+      const jobs: ProcessingJob[] = [];
+      for (const mongoJob of mongoJobs) {
+        const fullJob = await this.getJobFromMongoDB(mongoJob.jobId);
+        if (fullJob && fullJob.status === status) {
+          jobs.push(fullJob);
+        }
+      }
+
+      return jobs.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    } catch (error) {
+      logger.error("Failed to get jobs by status for user", error as Error, {
+        status,
+        userId,
+      });
+      throw new AppError(
+        "Failed to retrieve jobs by status",
+        500,
+        "JOBS_BY_STATUS_FETCH_ERROR"
+      );
+    }
+  }
+
   public async updateJobUserStatus(
     jobId: string,
     userId: string,

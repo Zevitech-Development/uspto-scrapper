@@ -177,21 +177,9 @@ export default function JobsPage() {
     try {
       let allJobs: ProcessingJob[] = [];
 
-      // ✅ IF USER (NOT ADMIN), FETCH ONLY ASSIGNED JOBS
-      if (user?.role === "user") {
-        const response = await ApiService.getMyAssignedJobs();
-        allJobs = response.data?.jobs || [];
-
-        // Only poll active jobs
-        const activeJobIds = allJobs
-          .filter(
-            (job) => job.status === "pending" || job.status === "processing"
-          )
-          .map((job) => job.id);
-        setPollingJobs(new Set(activeJobIds));
-      }
-      // ✅ IF ADMIN, FETCH ALL JOBS
-      else if (state.selectedStatus === "all") {
+      // Backend now handles role-based filtering automatically
+      if (state.selectedStatus === "all") {
+        // For "all" status, fetch all statuses and combine
         const [completed, processing, failed, pending] = await Promise.all([
           ApiService.getJobsByStatus("completed"),
           ApiService.getJobsByStatus("processing"),
@@ -212,6 +200,7 @@ export default function JobsPage() {
         ];
         setPollingJobs(new Set(activeJobIds));
       } else {
+        // For specific status, fetch jobs with that status
         const response = await ApiService.getJobsByStatus(state.selectedStatus);
         allJobs = response.data?.jobs || [];
 
@@ -242,7 +231,7 @@ export default function JobsPage() {
         loading: false,
       }));
     }
-  }, [state.selectedStatus, user?.role]);
+  }, [state.selectedStatus]);
 
   useEffect(() => {
     fetchJobs();

@@ -145,6 +145,7 @@ export class TrademarkController {
   ): Promise<void> => {
     try {
       const { jobId } = req.params;
+      const user = (req as any).user; // Get authenticated user
 
       if (!jobId) {
         throw new AppError("Job ID is required", 400, "JOB_ID_MISSING");
@@ -159,6 +160,17 @@ export class TrademarkController {
           error: "Job not found",
         };
         res.status(404).json(response);
+        return;
+      }
+
+      // Role-based access control: users can only access their assigned jobs
+      if (user.role === "user" && job.assignedTo !== user.id) {
+        const response: ApiResponse = {
+          success: false,
+          message: "Access denied. You can only view jobs assigned to you.",
+          error: "INSUFFICIENT_PERMISSIONS",
+        };
+        res.status(403).json(response);
         return;
       }
 
@@ -227,6 +239,30 @@ export class TrademarkController {
   ): Promise<void> => {
     try {
       const { jobId } = req.params;
+      const user = (req as any).user; // Get authenticated user
+
+      // Check if job exists and user has access
+      const job = await this.jobQueueService.getJobStatus(jobId);
+      if (!job) {
+        const response: ApiResponse = {
+          success: false,
+          message: "Job not found",
+          error: "Job not found",
+        };
+        res.status(404).json(response);
+        return;
+      }
+
+      // Role-based access control: users can only cancel their assigned jobs
+      if (user.role === "user" && job.assignedTo !== user.id) {
+        const response: ApiResponse = {
+          success: false,
+          message: "Access denied. You can only cancel jobs assigned to you.",
+          error: "INSUFFICIENT_PERMISSIONS",
+        };
+        res.status(403).json(response);
+        return;
+      }
 
       const cancelled = await this.jobQueueService.cancelJob(jobId);
 
@@ -251,6 +287,30 @@ export class TrademarkController {
   ): Promise<void> => {
     try {
       const { jobId } = req.params;
+      const user = (req as any).user; // Get authenticated user
+
+      // Check if job exists and user has access
+      const job = await this.jobQueueService.getJobStatus(jobId);
+      if (!job) {
+        const response: ApiResponse = {
+          success: false,
+          message: "Job not found",
+          error: "Job not found",
+        };
+        res.status(404).json(response);
+        return;
+      }
+
+      // Role-based access control: users can only remove their assigned jobs
+      if (user.role === "user" && job.assignedTo !== user.id) {
+        const response: ApiResponse = {
+          success: false,
+          message: "Access denied. You can only remove jobs assigned to you.",
+          error: "INSUFFICIENT_PERMISSIONS",
+        };
+        res.status(403).json(response);
+        return;
+      }
 
       const removed = await this.jobQueueService.removeJob(jobId);
 
@@ -275,6 +335,30 @@ export class TrademarkController {
   ): Promise<void> => {
     try {
       const { jobId } = req.params;
+      const user = (req as any).user; // Get authenticated user
+
+      // Check if job exists and user has access
+      const job = await this.jobQueueService.getJobStatus(jobId);
+      if (!job) {
+        const response: ApiResponse = {
+          success: false,
+          message: "Job not found",
+          error: "Job not found",
+        };
+        res.status(404).json(response);
+        return;
+      }
+
+      // Role-based access control: users can only retry their assigned jobs
+      if (user.role === "user" && job.assignedTo !== user.id) {
+        const response: ApiResponse = {
+          success: false,
+          message: "Access denied. You can only retry jobs assigned to you.",
+          error: "INSUFFICIENT_PERMISSIONS",
+        };
+        res.status(403).json(response);
+        return;
+      }
 
       const retried = await this.jobQueueService.retryJob(jobId);
 
@@ -411,12 +495,16 @@ export class TrademarkController {
   };
 
   public getJobsByStatus = async (
-    req: Request,
+    req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
   ): Promise<void> => {
     try {
       const { status } = req.params;
+
+      if (!req.user) {
+        throw new AppError("Authentication required", 401, "NOT_AUTHENTICATED");
+      }
 
       const validStatuses = ["pending", "processing", "completed", "failed"];
       if (!validStatuses.includes(status)) {
@@ -427,7 +515,19 @@ export class TrademarkController {
         );
       }
 
-      const jobs = await this.jobQueueService.getJobsByStatus(status as any);
+      let jobs;
+
+      // Role-based access control
+      if (req.user.role === "admin") {
+        // Admins can see all jobs
+        jobs = await this.jobQueueService.getJobsByStatus(status as any);
+      } else {
+        // Regular users can only see jobs assigned to them
+        jobs = await this.jobQueueService.getJobsByStatusForUser(
+          status as any,
+          req.user.id
+        );
+      }
 
       const response: ApiResponse = {
         success: true,
@@ -451,7 +551,7 @@ export class TrademarkController {
           })),
           count: jobs.length,
         },
-        message: `Retrieved ${jobs.length} jobs with status '${status}'`,
+        message: `Retrieved ${jobs.length} jobs with status '${status}' for ${req.user.role}`,
       };
 
       res.json(response);
