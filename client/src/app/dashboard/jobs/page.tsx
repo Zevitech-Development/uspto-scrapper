@@ -14,6 +14,7 @@ import {
   FileText,
   Calendar,
   Loader2,
+  Trash2,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import ApiService, { ProcessingJob } from "@/lib/api";
@@ -445,6 +446,29 @@ export default function JobsPage() {
     }
   };
 
+  const handleRemoveJob = async (jobId: string) => {
+    if (!confirm("Are you sure you want to remove this job? This action cannot be undone.")) {
+      return;
+    }
+
+    try {
+      const response = await ApiService.removeJob(jobId);
+      
+      if (response.success) {
+        // Remove job from local state immediately
+        setState((prev) => ({
+          ...prev,
+          jobs: prev.jobs.filter((job) => job.id !== jobId),
+        }));
+        
+        toast.success("Job removed successfully!");
+      }
+    } catch (error) {
+      console.error("Remove failed:", error);
+      toast.error("Failed to remove job. Please try again.");
+    }
+  };
+
   const handleUpdateStatus = async (
     jobId: string,
     status: "working" | "finished"
@@ -709,13 +733,22 @@ export default function JobsPage() {
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
                             <div className="flex items-center space-x-2">
                               {job.status === "completed" && (
-                                <button
-                                  onClick={() => handleDownload(job.id)}
-                                  className="p-2 text-green-600 hover:text-green-700 rounded-full hover:bg-green-50"
-                                  title="Download Results"
-                                >
-                                  <Download className="w-4 h-4" />
-                                </button>
+                                <>
+                                  <button
+                                    onClick={() => handleDownload(job.id)}
+                                    className="p-2 text-green-600 hover:text-green-700 rounded-full hover:bg-green-50"
+                                    title="Download Results"
+                                  >
+                                    <Download className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleRemoveJob(job.id)}
+                                    className="p-2 text-red-600 hover:text-red-700 rounded-full hover:bg-red-50"
+                                    title="Remove Job"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </>
                               )}
                               {job.status === "failed" && (
                                 <button

@@ -259,6 +259,14 @@ class ApiService {
     return this.handleResponse<ApiResponse>(response);
   }
 
+  static async removeJob(jobId: string) {
+    const response = await fetch(`${API_BASE_URL}/jobs/${jobId}/remove`, {
+      method: "DELETE",
+      headers: this.getAuthHeaders(),
+    });
+    return this.handleResponse<ApiResponse>(response);
+  }
+
   static async downloadResults(jobId: string) {
     const token = localStorage.getItem("auth_token");
     const response = await fetch(`${API_BASE_URL}/jobs/${jobId}/download`, {

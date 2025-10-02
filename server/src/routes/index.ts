@@ -132,6 +132,7 @@ router.post(
 
 // Job modification routes (rate limited)
 router.delete("/jobs/:jobId", trademarkController.cancelJob);
+router.delete("/jobs/:jobId/remove", trademarkController.removeJob);
 router.post("/jobs/:jobId/retry", trademarkController.retryJob);
 
 // Single trademark lookup (rate limited)

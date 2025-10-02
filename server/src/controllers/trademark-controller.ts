@@ -244,6 +244,30 @@ export class TrademarkController {
     }
   };
 
+  public removeJob = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { jobId } = req.params;
+
+      const removed = await this.jobQueueService.removeJob(jobId);
+
+      const response: ApiResponse = {
+        success: removed,
+        message: removed
+          ? "Job removed successfully"
+          : "Job could not be removed",
+        error: removed ? undefined : "Job not found or cannot be removed",
+      };
+
+      res.status(removed ? 200 : 400).json(response);
+    } catch (error) {
+      next(error);
+    }
+  };
+
   public retryJob = async (
     req: Request,
     res: Response,

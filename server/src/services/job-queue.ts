@@ -808,6 +808,22 @@ export class JobQueueService {
     }
   }
 
+  private async deleteJobFromDatabase(jobId: string): Promise<void> {
+    try {
+      const result = await ProcessingJobModel.deleteOne({ jobId });
+      if (result.deletedCount === 0) {
+        logger.warn("No job found in database for deletion", { jobId });
+      } else {
+        logger.info("Job deleted from database", { jobId });
+      }
+    } catch (error) {
+      logger.error("Failed to delete job from database", error as Error, {
+        jobId,
+      });
+      throw error;
+    }
+  }
+
   private async saveTrademarkDataToMongoDB(
     results: TrademarkData[]
   ): Promise<void> {
@@ -907,6 +923,55 @@ export class JobQueueService {
       return true;
     } catch (error) {
       logger.error("Failed to cancel job", error as Error, { jobId });
+      return false;
+    }
+  }
+
+  public async removeJob(jobId: string): Promise<boolean> {
+    try {
+      // Get all jobs including completed and failed ones
+      const [waitingJobs, activeJobs, completedJobs, failedJobs] =
+        await Promise.all([
+          this.queue.getWaiting(),
+          this.queue.getActive(),
+          this.queue.getCompleted(),
+          this.queue.getFailed(),
+        ]);
+
+      const allJobs = [
+        ...waitingJobs,
+        ...activeJobs,
+        ...completedJobs,
+        ...failedJobs,
+      ];
+      const job = allJobs.find((j) => j.data.jobId === jobId);
+
+      if (!job) {
+        logger.warn("Job not found for removal", { jobId });
+        return false;
+      }
+
+      const state = await job.getState();
+
+      // Only allow removal of completed or failed jobs
+      if (!["completed", "failed"].includes(state)) {
+        logger.warn("Cannot remove active or pending job", { jobId, state });
+        return false;
+      }
+
+      // Remove the job from the queue
+      await job.remove();
+
+      // Remove from memory cache
+      this.jobs.delete(jobId);
+
+      // Remove from database
+      await this.deleteJobFromDatabase(jobId);
+
+      logger.info("Job removed successfully", { jobId, state });
+      return true;
+    } catch (error) {
+      logger.error("Failed to remove job", error as Error, { jobId });
       return false;
     }
   }
