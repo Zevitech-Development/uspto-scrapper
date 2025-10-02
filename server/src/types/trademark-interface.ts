@@ -18,6 +18,12 @@ export interface ITrademark extends Document {
 export interface IProcessingJob extends Document {
   jobId: string;
   userId: string;
+  assignedTo?: string;
+  userStatus?: 'unassigned' | 'assigned' | 'downloaded' | 'working' | 'finished';
+  assignedAt?: Date;
+  downloadedAt?: Date;
+  workStartedAt?: Date;
+  finishedAt?: Date;
   serialNumbers: string[];
   status: 'pending' | 'processing' | 'completed' | 'failed';
   totalRecords: number;

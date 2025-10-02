@@ -5,6 +5,7 @@ import authRoutes from "./auth-route";
 import { Router } from "express";
 import multer from "multer";
 import rateLimit from "express-rate-limit";
+import { NotificationController } from "../controllers/notification-controller";
 
 // Configure multer for file uploads
 const upload = multer({
@@ -42,6 +43,7 @@ const upload = multer({
 
 const router = Router();
 const trademarkController = new TrademarkController();
+const notificationController = new NotificationController();
 
 // Health check route (no rate limiting, no auth)
 router.get("/health", trademarkController.healthCheck);
@@ -52,18 +54,50 @@ router.use("/auth", authRoutes);
 // Authentication middleware for all routes below
 router.use(AuthMiddleware.authenticate);
 
-// const jobStatusLimiter = rateLimit({
-//   windowMs: 60 * 1000, // 1 minute
-//   max: 30, // 30 requests per minute (one every 2 seconds)
-//   message: {
-//     success: false,
-//     message: "Too many status requests, please slow down polling",
-//     error: "Rate limit exceeded",
-//   },
-//   standardHeaders: true,
-//   legacyHeaders: false,
-// });
+router.get(
+  "/notifications",
+  AuthMiddleware.requireAdmin,
+  notificationController.getNotifications
+);
+router.get(
+  "/notifications/unread-count",
+  AuthMiddleware.requireAdmin,
+  notificationController.getUnreadCount
+);
+router.patch(
+  "/notifications/:notificationId/read",
+  AuthMiddleware.requireAdmin,
+  notificationController.markAsRead
+);
+router.patch(
+  "/notifications/mark-all-read",
+  AuthMiddleware.requireAdmin,
+  notificationController.markAllAsRead
+);
 
+router.post(
+  "/admin/jobs/:jobId/assign",
+  AuthMiddleware.requireAdmin,
+  trademarkController.assignJobToUser
+);
+router.get(
+  "/admin/jobs/assignments",
+  AuthMiddleware.requireAdmin,
+  trademarkController.getJobAssignments
+);
+
+router.get(
+  "/admin/user-timeline/:userId",
+  AuthMiddleware.requireAdmin,
+  trademarkController.getUserTimeline
+);
+
+// User job routes (no rate limiting for assigned jobs)
+router.get("/user/jobs/assigned", trademarkController.getMyAssignedJobs);
+router.patch(
+  "/user/jobs/:jobId/status",
+  trademarkController.updateJobUserStatus
+);
 
 // Job status and monitoring routes (NO RATE LIMITING - high frequency polling)
 router.get("/jobs/status/:status", trademarkController.getJobsByStatus);
@@ -84,12 +118,17 @@ router.use(rateLimiter);
 // File upload and processing routes (rate limited)
 router.post(
   "/upload",
+  AuthMiddleware.requireAdmin,
   upload.single("file"),
   trademarkController.uploadAndProcess
 );
 
 // Direct serial number processing (rate limited)
-router.post("/process", trademarkController.processSerialNumbers);
+router.post(
+  "/process",
+  AuthMiddleware.requireAdmin,
+  trademarkController.processSerialNumbers
+);
 
 // Job modification routes (rate limited)
 router.delete("/jobs/:jobId", trademarkController.cancelJob);

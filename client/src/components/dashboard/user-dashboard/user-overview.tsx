@@ -77,11 +77,11 @@ export const UserOverview = () => {
         />
       </div>
 
-      <QuickActions />
+      {/* <QuickActions /> */}
 
-      <RecentJobs />
+      {/* <RecentJobs /> */}
 
-      <UserTips />
+      {/* <UserTips /> */}
     </div>
   );
 };

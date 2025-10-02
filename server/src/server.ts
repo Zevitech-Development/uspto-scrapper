@@ -139,7 +139,7 @@ class Server {
 
       // Initialize job queue service to start processing jobs
       JobQueueService.getInstance();
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
       logger.info("Job queue service initialized");
       // Create HTTP server
       this.server = createServer(this.app);

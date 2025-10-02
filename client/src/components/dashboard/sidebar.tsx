@@ -26,12 +26,7 @@ const getMenuItems = (userRole: "admin" | "user"): MenuItem[] => {
       icon: BarChart3,
       href: "/dashboard",
     },
-    {
-      id: "upload",
-      label: "Upload & Process",
-      icon: Upload,
-      href: "/dashboard/upload",
-    },
+
     {
       id: "jobs",
       label: userRole === "admin" ? "All Jobs" : "My Jobs",
@@ -43,18 +38,25 @@ const getMenuItems = (userRole: "admin" | "user"): MenuItem[] => {
   if (userRole === "admin") {
     return [
       ...commonItems,
-      // {
-      //   id: "analytics",
-      //   label: "Analytics",
-      //   icon: TrendingUp,
-      //   href: "/dashboard/analytics",
-      // },
+       {
+        id: "upload",
+        label: "Upload & Process",
+        icon: Upload,
+        href: "/dashboard/upload",
+      },
+      {
+        id: "analytics",
+        label: "Analytics",
+        icon: TrendingUp,
+        href: "/dashboard/user-timeline",
+      },
       {
         id: "users",
         label: "User Management",
         icon: Users,
         href: "/dashboard/users",
       },
+     
       // {
       //   id: "settings",
       //   label: "System Settings",

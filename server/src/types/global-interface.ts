@@ -1,4 +1,5 @@
 import Bull from "bull";
+import { INotification } from "./notification-interface";
 
 export interface TrademarkData {
   serialNumber: string;
@@ -119,6 +120,12 @@ export interface ContactInfo {
 export interface ProcessingJob {
   id: string;
   serialNumbers: string[];
+  assignedTo?: string;
+  userStatus?: 'unassigned' | 'assigned' | 'downloaded' | 'working' | 'finished';
+  assignedAt?: Date;
+  downloadedAt?: Date;
+  workStartedAt?: Date;
+  finishedAt?: Date;
   status: "pending" | "processing" | "completed" | "failed";
   results: TrademarkData[];
   totalRecords: number;
@@ -249,7 +256,15 @@ export interface LogContext {
     jobId: string;
     createdAt: string;
   }[];
-
+  newStatus?: ProcessingJob["status"];
+  assignedToString?: string;
+  userIdString?: string;
+  assignedTo?: string;
+  assignedBy?: string;
+  notificationId?: string;
+  type?: INotification["type"];
+  recipientId?: string;
+  daysOld?: number;
   activeJobs?: {
     id: Bull.JobId;
     jobId: string;
@@ -316,4 +331,6 @@ export interface LogContext {
   hasOwnerName?: boolean;
   hasAttorney?: boolean;
   isAbandoned?: boolean;
+  userName?: string;
+  notificationType?: INotification["type"];
 }

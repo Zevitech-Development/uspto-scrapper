@@ -13,13 +13,14 @@ import {
   Play,
   FileText,
   Calendar,
-  User,
   Loader2,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import ApiService, { ProcessingJob } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout";
+import { User } from "@/types/api-service-interface";
+import toast, { Toaster } from "react-hot-toast";
 
 interface JobsState {
   jobs: ProcessingJob[];
@@ -44,52 +45,50 @@ export default function JobsPage() {
 
   const [pollingJobs, setPollingJobs] = useState<Set<string>>(new Set());
 
+  const [users, setUsers] = useState<User[]>([]);
+  const [assigningJobId, setAssigningJobId] = useState<string | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState<string>("");
+
   useEffect(() => {
     if (pollingJobs.size === 0) return;
 
     let pollCount = 0;
     let isCancelled = false;
-    let timeoutId: NodeJS.Timeout | null = null; // ✅ Track timeout for cleanup
+    let timeoutId: NodeJS.Timeout | null = null;
 
     const poll = async () => {
       if (isCancelled) return;
 
       pollCount++;
 
-      // ✅ Adaptive polling interval based on poll count
       const baseInterval =
         pollCount < 10
-          ? 3000 // First 30 seconds: every 3 seconds
+          ? 3000
           : pollCount < 20
-          ? 5000 // Next 50 seconds: every 5 seconds
+          ? 5000
           : pollCount < 40
-          ? 15000 // Next 5 minutes: every 15 seconds
-          : 60000; // After that: every 60 seconds
+          ? 15000
+          : 60000;
 
-      // ✅ Get up to 5 jobs to poll (increased from 3 for better responsiveness)
       const jobsToUpdate = Array.from(pollingJobs).slice(0, 5);
 
-      // ✅ Skip if no jobs to poll
       if (jobsToUpdate.length === 0) {
         timeoutId = setTimeout(poll, baseInterval);
         return;
       }
 
       try {
-        // ✅ Poll with individual error handling
         const statuses = await Promise.all(
           jobsToUpdate.map((jobId) =>
             ApiService.getJobStatus(jobId).catch((err) => {
               console.error(`Failed to poll job ${jobId}:`, err);
-              return null; // Return null instead of throwing
+              return null;
             })
           )
         );
 
-        // ✅ Filter out failed requests
         const validStatuses = statuses.filter((status) => status !== null);
 
-        // Process batch results and update state
         if (validStatuses.length > 0) {
           setState((prev) => {
             const updatedJobs = prev.jobs.map((job) => {
@@ -100,20 +99,18 @@ export default function JobsPage() {
               if (statusUpdate?.data) {
                 const jobData = statusUpdate.data;
 
-                // Create updated job object with the correct structure
                 const updatedJob: ProcessingJob = {
+                  ...job,
                   id: jobData.jobId,
                   status: jobData.status,
                   totalRecords: jobData.progress.total,
                   processedRecords: jobData.progress.processed,
                   results: jobData.results || job.results,
-                  serialNumbers: job.serialNumbers, // Keep original serial numbers
                   createdAt: jobData.createdAt,
                   completedAt: jobData.completedAt,
                   errorMessage: jobData.errorMessage,
                 };
 
-                // ✅ Log status changes for debugging
                 if (job.status !== updatedJob.status) {
                   console.log(
                     `Job ${job.id} status changed: ${job.status} → ${updatedJob.status}`
@@ -133,19 +130,15 @@ export default function JobsPage() {
         }
       } catch (error) {
         console.error("Batch polling failed:", error);
-        // Continue polling even if there's an error
       }
 
-      // ✅ Schedule next poll with proper cleanup check
       if (!isCancelled) {
         timeoutId = setTimeout(poll, baseInterval);
       }
     };
 
-    // Start polling
     poll();
 
-    // ✅ Cleanup function
     return () => {
       isCancelled = true;
       if (timeoutId) {
@@ -183,8 +176,21 @@ export default function JobsPage() {
     try {
       let allJobs: ProcessingJob[] = [];
 
-      if (state.selectedStatus === "all") {
-        // Fetch all statuses
+      // ✅ IF USER (NOT ADMIN), FETCH ONLY ASSIGNED JOBS
+      if (user?.role === "user") {
+        const response = await ApiService.getMyAssignedJobs();
+        allJobs = response.data?.jobs || [];
+
+        // Only poll active jobs
+        const activeJobIds = allJobs
+          .filter(
+            (job) => job.status === "pending" || job.status === "processing"
+          )
+          .map((job) => job.id);
+        setPollingJobs(new Set(activeJobIds));
+      }
+      // ✅ IF ADMIN, FETCH ALL JOBS
+      else if (state.selectedStatus === "all") {
         const [completed, processing, failed, pending] = await Promise.all([
           ApiService.getJobsByStatus("completed"),
           ApiService.getJobsByStatus("processing"),
@@ -208,7 +214,6 @@ export default function JobsPage() {
         const response = await ApiService.getJobsByStatus(state.selectedStatus);
         allJobs = response.data?.jobs || [];
 
-        // Start polling only when viewing processing jobs
         if (
           state.selectedStatus === "processing" ||
           state.selectedStatus === "pending"
@@ -219,7 +224,6 @@ export default function JobsPage() {
         }
       }
 
-      // Sort by creation date (newest first)
       allJobs.sort(
         (a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -237,11 +241,89 @@ export default function JobsPage() {
         loading: false,
       }));
     }
-  }, [state.selectedStatus]);
+  }, [state.selectedStatus, user?.role]);
 
   useEffect(() => {
     fetchJobs();
   }, [state.selectedStatus, fetchJobs]);
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const fetchUsers = async () => {
+    try {
+      const response = await ApiService.getAllUsers(1, 100);
+      if (response.success && response.data) {
+        setUsers(
+          response.data.users.filter(
+            (u: User) => u.role === "user" && u.isActive
+          )
+        );
+      }
+    } catch (error) {
+      console.error("Failed to fetch users:", error);
+    }
+  };
+
+  const handleAssignClick = async (jobId: string) => {
+    setAssigningJobId(jobId);
+    await fetchUsers();
+  };
+
+  const getUserName = (userId: string): string => {
+    const user = users.find((u) => u.id === userId);
+    if (user) {
+      return `${user.firstName} ${user.lastName}`;
+    }
+    return "Unknown User";
+  };
+
+  const handleAssignJob = async () => {
+    if (!assigningJobId || !selectedUserId) {
+      toast.error("Please select a user");
+      return;
+    }
+
+    try {
+      const response = await ApiService.assignJobToUser(
+        assigningJobId,
+        selectedUserId
+      );
+
+      if (response.success) {
+        const selectedUser = users.find((u) => u.id === selectedUserId);
+
+        // Update state immediately
+        setState((prev) => ({
+          ...prev,
+          jobs: prev.jobs.map((job) =>
+            job.id === assigningJobId
+              ? {
+                  ...job,
+                  assignedTo: selectedUserId,
+                  userStatus: "assigned" as const,
+                  assignedAt: new Date().toISOString(),
+                }
+              : job
+          ),
+        }));
+
+        // Show success toast
+        toast.success(
+          `Job assigned to ${selectedUser?.firstName} ${selectedUser?.lastName}!`,
+          { duration: 4000 }
+        );
+
+        // Close the assignment UI
+        setAssigningJobId(null);
+        setSelectedUserId("");
+      }
+    } catch (error) {
+      console.error("Assignment failed:", error);
+      toast.error("Failed to assign job. Please try again.");
+    }
+  };
 
   const getStatusBadge = (status: string) => {
     const baseClasses =
@@ -296,6 +378,34 @@ export default function JobsPage() {
 
   const handleDownload = async (jobId: string) => {
     try {
+      const currentJob = state.jobs.find((j) => j.id === jobId);
+
+      // For users, call the status update API which will:
+      // 1. Update status to "downloaded"
+      // 2. Create notification for admin
+      // 3. Trigger the download
+      if (user?.role === "user" && currentJob?.assignedTo === user.id) {
+        // Only update if not already downloaded
+        if (
+          currentJob.userStatus !== "downloaded" &&
+          currentJob.userStatus !== "working" &&
+          currentJob.userStatus !== "finished"
+        ) {
+          await ApiService.updateJobUserStatus(jobId, "downloaded");
+
+          // Update local state
+          setState((prev) => ({
+            ...prev,
+            jobs: prev.jobs.map((job) =>
+              job.id === jobId
+                ? { ...job, userStatus: "downloaded" as const }
+                : job
+            ),
+          }));
+        }
+      }
+
+      // Download the file
       const blob = await ApiService.downloadResults(jobId);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -305,31 +415,57 @@ export default function JobsPage() {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
+
+      toast.success("File downloaded successfully!");
     } catch (error) {
       console.error("Download failed:", error);
       const errorMessage =
         error instanceof Error ? error.message : "Download failed";
-      alert(`Download failed: ${errorMessage}`);
+      toast.error(`Download failed: ${errorMessage}`);
     }
   };
 
   const handleCancelJob = async (jobId: string) => {
     try {
       await ApiService.cancelJob(jobId);
-      await fetchJobs(); // Refresh the list
+      await fetchJobs();
     } catch (error) {
       console.error("Cancel failed:", error);
-      alert("Failed to cancel job. Please try again.");
+      toast.error("Failed to cancel job. Please try again.");
     }
   };
 
   const handleRetryJob = async (jobId: string) => {
     try {
       await ApiService.retryJob(jobId);
-      await fetchJobs(); // Refresh the list
+      await fetchJobs();
     } catch (error) {
       console.error("Retry failed:", error);
-      alert("Failed to retry job. Please try again.");
+      toast.error("Failed to retry job. Please try again.");
+    }
+  };
+
+  const handleUpdateStatus = async (
+    jobId: string,
+    status: "working" | "finished"
+  ) => {
+    try {
+      const response = await ApiService.updateJobUserStatus(jobId, status);
+
+      if (response.success) {
+        setState((prev) => ({
+          ...prev,
+          jobs: prev.jobs.map((job) =>
+            job.id === jobId ? { ...job, userStatus: status } : job
+          ),
+        }));
+
+        toast.success(`Job marked as ${status}!`);
+        await fetchJobs();
+      }
+    } catch (error) {
+      console.error("Failed to update status:", error);
+      toast.error("Failed to update status. Please try again.");
     }
   };
 
@@ -363,8 +499,8 @@ export default function JobsPage() {
 
   return (
     <DashboardLayout title={user.role === "admin" ? "All Jobs" : "My Jobs"}>
+      <Toaster position="top-right" />
       <div className="space-y-6">
-        {/* Status Filter Tabs */}
         <div className="bg-white rounded-lg border border-gray-200 p-1">
           <div className="flex flex-wrap gap-1">
             {statusFilters.map((filter) => (
@@ -394,8 +530,7 @@ export default function JobsPage() {
           </div>
         </div>
 
-        {/* Jobs List */}
-        <div className="bg-white rounded-lg border border-gray-200">
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
           {state.loading ? (
             <div className="p-8 text-center">
               <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
@@ -421,196 +556,327 @@ export default function JobsPage() {
               </p>
             </div>
           ) : (
-            <div className="divide-y divide-gray-200">
-              {state.jobs.map((job) => (
-                <div
-                  key={job.id}
-                  className={cn(
-                    "p-6 hover:bg-gray-50 transition-colors",
-                    state.highlightedJobId === job.id &&
-                      "bg-blue-50 border-l-4 border-blue-500"
-                  )}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-3 mb-2">
-                        <h3 className="text-lg font-medium text-gray-900">
-                          Job #{job.id.slice(0, 8)}
-                        </h3>
-                        {getStatusBadge(job.status)}
-                        {state.highlightedJobId === job.id && (
-                          <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
-                            New
-                          </span>
-                        )}
-                      </div>
+            <>
+              {user.role === "admin" ? (
+                // ADMIN TABLE VIEW
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Job ID
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Created Date
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Records
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Completed Date
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Status
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Assigned To
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          User Status
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {state.jobs.map((job) => (
+                        <tr
+                          key={job.id}
+                          className={cn(
+                            "hover:bg-gray-50 transition-colors",
+                            state.highlightedJobId === job.id && "bg-blue-50"
+                          )}
+                        >
+                          {/* Job ID */}
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            #{job.id.slice(0, 8)}
+                          </td>
 
-                      <div className="flex items-center space-x-6 text-sm text-gray-500">
-                        <div className="flex items-center space-x-1">
-                          <FileText className="w-4 h-4" />
-                          <span>{job.totalRecords} records</span>
-                        </div>
-                        <div className="flex items-center space-x-1">
-                          <Calendar className="w-4 h-4" />
-                          <span>{formatDate(job.createdAt)}</span>
-                        </div>
-                        {job.completedAt && (
-                          <div className="flex items-center space-x-1">
-                            <CheckCircle className="w-4 h-4" />
-                            <span>Completed {formatDate(job.completedAt)}</span>
-                          </div>
-                        )}
-                      </div>
+                          {/* Created Date */}
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {formatDate(job.createdAt)}
+                          </td>
 
-                      {/* Progress Bar for Processing Jobs */}
-                      {(job.status === "processing" ||
-                        job.status === "pending") && (
-                        <div className="mt-3">
-                          <div className="flex justify-between text-sm text-gray-600 mb-1">
-                            <span>Progress</span>
-                            <span>
-                              {job.processedRecords}/{job.totalRecords}
-                            </span>
-                          </div>
-                          <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div
-                              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                              style={{
-                                width: `${
-                                  job.totalRecords > 0
-                                    ? Math.round(
-                                        (job.processedRecords /
-                                          job.totalRecords) *
-                                          100
-                                      )
-                                    : 0
-                                }%`,
-                              }}
-                            />
-                          </div>
-                        </div>
-                      )}
+                          {/* Records Count */}
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {job.totalRecords}
+                          </td>
 
-                      {/* Error Message */}
-                      {job.status === "failed" && job.errorMessage && (
-                        <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
-                          {job.errorMessage}
-                        </div>
-                      )}
-                    </div>
+                          {/* Completed Date */}
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {job.completedAt
+                              ? formatDate(job.completedAt)
+                              : "-"}
+                          </td>
 
-                    {job.status === "completed" &&
-                      job.results &&
-                      job.results.length > 0 && (
-                        <div className="mt-4">
-                          <div className="flex justify-between items-center mb-2">
-                            <h4 className="font-medium text-gray-900">
-                              Results ({job.results.length} records)
-                            </h4>
-                            <button
-                              onClick={() => handleDownload(job.id)}
-                              className="text-sm bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700"
-                            >
-                              Download Excel
-                            </button>
-                          </div>
-                          <div className="overflow-x-auto border border-gray-200 rounded">
-                            <table className="min-w-full text-sm">
-                              <thead className="bg-gray-50">
-                                <tr>
-                                  <th className="px-3 py-2 text-left">
-                                    Serial Number
-                                  </th>
-                                  <th className="px-3 py-2 text-left">
-                                    Owner Name
-                                  </th>
-                                  <th className="px-3 py-2 text-left">
-                                    Mark Text
-                                  </th>
-                                  <th className="px-3 py-2 text-left">
-                                    Status
-                                  </th>
-                                  <th className="px-3 py-2 text-left">
-                                    Filing Date
-                                  </th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-200">
-                                {job.results.slice(0, 10).map((result, idx) => (
-                                  <tr key={idx}>
-                                    <td className="px-3 py-2">
-                                      {result.serialNumber}
-                                    </td>
-                                    <td className="px-3 py-2">
-                                      {result.markText || "N/A"}
-                                    </td>
-                                    <td className="px-3 py-2">
-                                      {result.ownerName || "N/A"}
-                                    </td>
-                                    <td className="px-3 py-2">
-                                      <span
-                                        className={`px-2 py-1 text-xs rounded-full ${
-                                          result.status === "success"
-                                            ? "bg-green-100 text-green-800"
-                                            : result.status === "not_found"
-                                            ? "bg-yellow-100 text-yellow-800"
-                                            : "bg-red-100 text-red-800"
-                                        }`}
-                                      >
-                                        {result.status}
-                                      </span>
-                                    </td>
-                                    <td className="px-3 py-2">
-                                      {result.filingDate || "N/A"}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                            {job.results.length > 10 && (
-                              <div className="p-2 text-center text-gray-500 text-sm">
-                                Showing 10 of {job.results.length} results.
-                                Download for full data.
-                              </div>
+                          {/* Status Badge */}
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {getStatusBadge(job.status)}
+                          </td>
+
+                          {/* Assigned To Dropdown */}
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            {job.status === "completed" ? (
+                              assigningJobId === job.id ? (
+                                <div className="flex items-center space-x-2">
+                                  <select
+                                    value={selectedUserId}
+                                    onChange={(e) =>
+                                      setSelectedUserId(e.target.value)
+                                    }
+                                    className="px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  >
+                                    <option value="">Select user...</option>
+                                    {users.map((u) => (
+                                      <option key={u.id} value={u.id}>
+                                        {u.firstName} {u.lastName}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <button
+                                    onClick={handleAssignJob}
+                                    disabled={!selectedUserId}
+                                    className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:bg-gray-400"
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setAssigningJobId(null);
+                                      setSelectedUserId("");
+                                    }}
+                                    className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs hover:bg-gray-300"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              ) : job.assignedTo ? (
+                                <button
+                                  onClick={() => handleAssignClick(job.id)}
+                                  className="text-blue-600 hover:text-blue-800 font-medium"
+                                >
+                                  {getUserName(job.assignedTo)}
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleAssignClick(job.id)}
+                                  className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
+                                >
+                                  Assign
+                                </button>
+                              )
+                            ) : (
+                              <span className="text-gray-400">-</span>
                             )}
-                          </div>
-                        </div>
-                      )}
+                          </td>
 
-                    {/* Action Buttons */}
-                    <div className="flex items-center space-x-2 ml-4">
-                      <button
-                        className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100"
-                        title="View Details"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
+                          {/* User Status */}
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            {job.userStatus ? (
+                              <span
+                                className={cn(
+                                  "px-2 py-1 rounded-full text-xs font-medium",
+                                  job.userStatus === "assigned" &&
+                                    "bg-yellow-100 text-yellow-800",
+                                  job.userStatus === "downloaded" &&
+                                    "bg-blue-100 text-blue-800",
+                                  job.userStatus === "working" &&
+                                    "bg-orange-100 text-orange-800",
+                                  job.userStatus === "finished" &&
+                                    "bg-green-100 text-green-800"
+                                )}
+                              >
+                                {job.userStatus.charAt(0).toUpperCase() +
+                                  job.userStatus.slice(1)}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </td>
 
-                      {job.status === "failed" && (
-                        <button
-                          onClick={() => handleRetryJob(job.id)}
-                          className="p-2 text-blue-600 hover:text-blue-700 rounded-full hover:bg-blue-50"
-                          title="Retry Job"
-                        >
-                          <RotateCcw className="w-4 h-4" />
-                        </button>
-                      )}
-
-                      {(job.status === "pending" ||
-                        job.status === "processing") && (
-                        <button
-                          onClick={() => handleCancelJob(job.id)}
-                          className="p-2 text-red-600 hover:text-red-700 rounded-full hover:bg-red-50"
-                          title="Cancel Job"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                          {/* Actions */}
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            <div className="flex items-center space-x-2">
+                              {job.status === "completed" && (
+                                <button
+                                  onClick={() => handleDownload(job.id)}
+                                  className="p-2 text-green-600 hover:text-green-700 rounded-full hover:bg-green-50"
+                                  title="Download Results"
+                                >
+                                  <Download className="w-4 h-4" />
+                                </button>
+                              )}
+                              {job.status === "failed" && (
+                                <button
+                                  onClick={() => handleRetryJob(job.id)}
+                                  className="p-2 text-blue-600 hover:text-blue-700 rounded-full hover:bg-blue-50"
+                                  title="Retry Job"
+                                >
+                                  <RotateCcw className="w-4 h-4" />
+                                </button>
+                              )}
+                              {(job.status === "pending" ||
+                                job.status === "processing") && (
+                                <button
+                                  onClick={() => handleCancelJob(job.id)}
+                                  className="p-2 text-red-600 hover:text-red-700 rounded-full hover:bg-red-50"
+                                  title="Cancel Job"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              ))}
-            </div>
+              ) : (
+                // USER TABLE VIEW
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Job ID
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Created Date
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Assigned At
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Records
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Status
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {state.jobs.map((job) => (
+                        <tr
+                          key={job.id}
+                          className="hover:bg-gray-50 transition-colors"
+                        >
+                          {/* Job ID */}
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            #{job.id.slice(0, 8)}
+                          </td>
+
+                          {/* Created Date */}
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {formatDate(job.createdAt)}
+                          </td>
+
+                          {/* Assigned At */}
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {job.assignedAt ? formatDate(job.assignedAt) : "-"}
+                          </td>
+
+                          {/* Records */}
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {job.totalRecords}
+                          </td>
+
+                          {/* Status */}
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {getStatusBadge(job.status)}
+                          </td>
+                          {/* Actions - Three Buttons */}
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {job.status === "completed" ? (
+                              <div className="flex items-center space-x-2">
+                                {/* Download Button - Only disable after downloaded */}
+                                <button
+                                  onClick={() => handleDownload(job.id)}
+                                  disabled={
+                                    job.userStatus === "downloaded" ||
+                                    job.userStatus === "working" ||
+                                    job.userStatus === "finished"
+                                  }
+                                  className={cn(
+                                    "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                                    job.userStatus === "downloaded" ||
+                                      job.userStatus === "working" ||
+                                      job.userStatus === "finished"
+                                      ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                                      : "bg-blue-600 text-white hover:bg-blue-700"
+                                  )}
+                                >
+                                  {job.userStatus === "downloaded" ||
+                                  job.userStatus === "working" ||
+                                  job.userStatus === "finished"
+                                    ? "✓ Downloaded"
+                                    : "Download"}
+                                </button>
+
+                                {/* Start Work Button - Enable only after downloaded */}
+                                <button
+                                  onClick={() =>
+                                    handleUpdateStatus(job.id, "working")
+                                  }
+                                  disabled={job.userStatus !== "downloaded"}
+                                  className={cn(
+                                    "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                                    job.userStatus === "downloaded"
+                                      ? "bg-orange-600 text-white hover:bg-orange-700"
+                                      : "bg-gray-200 text-gray-500 cursor-not-allowed"
+                                  )}
+                                >
+                                  {job.userStatus === "working" ||
+                                  job.userStatus === "finished"
+                                    ? "✓ Started"
+                                    : "Start Work"}
+                                </button>
+
+                                {/* Finish Button - Enable only when working */}
+                                <button
+                                  onClick={() =>
+                                    handleUpdateStatus(job.id, "finished")
+                                  }
+                                  disabled={job.userStatus !== "working"}
+                                  className={cn(
+                                    "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                                    job.userStatus === "working"
+                                      ? "bg-green-600 text-white hover:bg-green-700"
+                                      : "bg-gray-200 text-gray-500 cursor-not-allowed"
+                                  )}
+                                >
+                                  {job.userStatus === "finished"
+                                    ? "✓ Finished"
+                                    : "Finish"}
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-sm text-gray-400">
+                                Pending completion
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

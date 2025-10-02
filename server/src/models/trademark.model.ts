@@ -27,6 +27,17 @@ const processingJobSchema = new Schema<IProcessingJob>(
   {
     jobId: { type: String, required: true, unique: true, index: true },
     userId: { type: String, required: true, index: true },
+    assignedTo: { type: Schema.Types.ObjectId, ref: "User", index: true },
+    userStatus: {
+      type: String,
+      enum: ["unassigned", "assigned", "downloaded", "working", "finished"],
+      default: "unassigned",
+    },
+    assignedAt: Date,
+    downloadedAt: Date,
+    workStartedAt: Date,
+    finishedAt: Date,
+
     serialNumbers: [{ type: String, required: true }],
     status: {
       type: String,

@@ -2,10 +2,17 @@ import Bull from "bull";
 import Redis from "ioredis";
 import { v4 as uuidv4 } from "uuid";
 import { USPTOService } from "./uspto-service";
-import { ProcessingJob, TrademarkData } from "../types/global-interface";
+import {
+  AppError,
+  ProcessingJob,
+  TrademarkData,
+} from "../types/global-interface";
 // import config from "../config/config";
 import logger from "../utils/logger";
 import { ProcessingJobModel, Trademark } from "../models/trademark.model";
+import { NotificationService } from "./notification-service";
+import { User } from "../models/user.model";
+import mongoose from "mongoose";
 
 interface JobData {
   jobId: string;
@@ -24,6 +31,7 @@ export class JobQueueService {
   private queue!: Bull.Queue<JobData>;
   private redis: Redis;
   private usptoService: USPTOService;
+  private notificationService: NotificationService;
   private jobs: Map<string, ProcessingJob> = new Map();
   private memoryCleanupInterval?: NodeJS.Timeout;
   private healthCheckInterval?: NodeJS.Timeout;
@@ -46,6 +54,7 @@ export class JobQueueService {
 
     this.redis = new Redis(redisConfig);
     this.usptoService = new USPTOService();
+    this.notificationService = NotificationService.getInstance();
 
     this.redis.on("error", (error) => {
       logger.error("Redis connection error", error);
@@ -177,7 +186,7 @@ export class JobQueueService {
       });
 
       // Register the processor for trademark processing jobs
-      this.queue.process('trademark-processing', 1, async (job) => {
+      this.queue.process("trademark-processing", 1, async (job) => {
         logger.info("🚀 PROCESSING JOB STARTED", {
           jobId: job.data.jobId,
           bullJobId: job.id as string,
@@ -411,7 +420,7 @@ export class JobQueueService {
       await this.saveJobToMongoDB(jobId, userId, serialNumbers);
 
       const bullJob = await this.queue.add(
-        'trademark-processing',
+        "trademark-processing",
         {
           jobId,
           serialNumbers,
@@ -1046,6 +1055,13 @@ export class JobQueueService {
         createdAt: mongoJob.createdAt,
         completedAt: mongoJob.completedAt || undefined,
         errorMessage: mongoJob.errorMessage,
+        // Include assignment fields
+        assignedTo: mongoJob.assignedTo,
+        userStatus: mongoJob.userStatus,
+        assignedAt: mongoJob.assignedAt,
+        downloadedAt: mongoJob.downloadedAt,
+        workStartedAt: mongoJob.workStartedAt,
+        finishedAt: mongoJob.finishedAt,
       };
     } catch (error) {
       logger.error("Failed to get job from MongoDB", error as Error, { jobId });
@@ -1225,7 +1241,7 @@ export class JobQueueService {
         return jobs;
       }
 
-      // For active jobs, use Redis but with single pipeline
+      // For active jobs, use Redis but also fetch assignment data from MongoDB
       const pipeline = this.redis.pipeline();
       const jobIds = await this.redis.smembers(`job:status:${status}`);
 
@@ -1236,12 +1252,49 @@ export class JobQueueService {
       const results = await pipeline.exec();
 
       const jobs: ProcessingJob[] = [];
+
+      // Also get assignment data from MongoDB for all jobs
+      const mongoJobs = await ProcessingJobModel.find({
+        jobId: { $in: jobIds },
+        status: status,
+      })
+        .select(
+          "jobId assignedTo userStatus assignedAt downloadedAt workStartedAt finishedAt"
+        )
+        .lean();
+
+      const assignmentMap = new Map(
+        mongoJobs.map((job) => [
+          job.jobId,
+          {
+            assignedTo: job.assignedTo,
+            userStatus: job.userStatus,
+            assignedAt: job.assignedAt,
+            downloadedAt: job.downloadedAt,
+            workStartedAt: job.workStartedAt,
+            finishedAt: job.finishedAt,
+          },
+        ])
+      );
+
       results?.forEach(([err, value], index) => {
         if (!err && value) {
           try {
             const job: ProcessingJob = JSON.parse(value as string);
             job.createdAt = new Date(job.createdAt);
             if (job.completedAt) job.completedAt = new Date(job.completedAt);
+
+            // Add assignment data from MongoDB
+            const assignmentData = assignmentMap.get(job.id);
+            if (assignmentData) {
+              job.assignedTo = assignmentData.assignedTo;
+              job.userStatus = assignmentData.userStatus;
+              job.assignedAt = assignmentData.assignedAt;
+              job.downloadedAt = assignmentData.downloadedAt;
+              job.workStartedAt = assignmentData.workStartedAt;
+              job.finishedAt = assignmentData.finishedAt;
+            }
+
             if (job.status === status) jobs.push(job);
           } catch (parseError) {
             logger.warn(`Failed to parse job ${jobIds[index]}`);
@@ -1521,6 +1574,290 @@ export class JobQueueService {
     } catch (error) {
       logger.error("Failed to restart processor", error as Error);
       throw error;
+    }
+  }
+
+  public async assignJobToUser(
+    jobId: string,
+    userId: string,
+    adminId: string
+  ): Promise<ProcessingJob | null> {
+    try {
+      // Verify user exists and is active
+      const user = await User.findById(userId);
+      if (!user || !user.isActive) {
+        throw new AppError("User not found or inactive", 404, "USER_NOT_FOUND");
+      }
+
+      // ✅ ADD DEBUG LOG BEFORE UPDATE
+      console.log("🔧 Assigning job...");
+      console.log("  jobId:", jobId);
+      console.log("  userId (string):", userId);
+      console.log("  userId as ObjectId:", new mongoose.Types.ObjectId(userId));
+
+      // Update job in MongoDB
+      const result = await ProcessingJobModel.findOneAndUpdate(
+        { jobId },
+        {
+          $set: {
+            assignedTo: new mongoose.Types.ObjectId(userId),
+            userStatus: "assigned",
+            assignedAt: new Date(),
+          },
+        },
+        { new: true }
+      );
+
+      console.log("✅ Job updated in DB, assignedTo:", result?.assignedTo);
+      console.log("✅ assignedTo type:", typeof result?.assignedTo);
+
+      if (!result) {
+        throw new AppError("Job not found", 404, "JOB_NOT_FOUND");
+      }
+
+      // Update cache
+      const job = await this.getJobFromMongoDB(jobId);
+      if (job) {
+        this.jobs.set(jobId, job);
+        await this.redis.setex(`job:${jobId}`, 604800, JSON.stringify(job));
+      }
+
+      // Create notification for user (optional - for future user notifications)
+      // For now, we'll skip user notifications
+
+      logger.info("Job assigned to user", {
+        action: "job_assigned",
+        jobId,
+        assignedTo: userId,
+        assignedBy: adminId,
+        userName: user.getFullName(),
+      });
+
+      return job;
+    } catch (error) {
+      logger.error("Failed to assign job", error as Error, { jobId, userId });
+      throw error;
+    }
+  }
+
+  public async getJobAssignments(): Promise<any[]> {
+    try {
+      const jobs = await ProcessingJobModel.find({
+        assignedTo: { $exists: true, $ne: null },
+      })
+        .sort({ assignedAt: -1 })
+        .limit(100)
+        .lean();
+
+      // Get user details for each assignment
+      const userIds = [
+        ...new Set(jobs.map((j) => j.assignedTo).filter(Boolean)),
+      ];
+      const users = await User.find({ _id: { $in: userIds } })
+        .select("_id firstName lastName email")
+        .lean();
+
+      const userMap = new Map(users.map((u) => [u._id.toString(), u]));
+
+      return jobs.map((job) => ({
+        jobId: job.jobId,
+        assignedTo: job.assignedTo,
+        assignedUser: job.assignedTo ? userMap.get(job.assignedTo) : null,
+        userStatus: job.userStatus,
+        totalRecords: job.totalRecords,
+        processedRecords: job.processedRecords,
+        status: job.status,
+        assignedAt: job.assignedAt,
+        downloadedAt: job.downloadedAt,
+        workStartedAt: job.workStartedAt,
+        finishedAt: job.finishedAt,
+        createdAt: job.createdAt,
+        completedAt: job.completedAt,
+      }));
+    } catch (error) {
+      logger.error("Failed to get job assignments", error as Error);
+      throw new AppError(
+        "Failed to retrieve job assignments",
+        500,
+        "ASSIGNMENTS_FETCH_ERROR"
+      );
+    }
+  }
+
+  public async getJobsAssignedToUser(userId: string): Promise<ProcessingJob[]> {
+    try {
+      console.log("🔍 Fetching jobs for userId:", userId);
+      console.log("🔍 userId type:", typeof userId);
+      console.log(
+        "🔍 Converted to ObjectId:",
+        new mongoose.Types.ObjectId(userId)
+      );
+
+      const mongoJobs = await ProcessingJobModel.find({
+        assignedTo: new mongoose.Types.ObjectId(userId),
+        status: { $in: ["pending", "processing", "completed"] }, // Exclude failed jobs
+      })
+        .sort({ assignedAt: -1 })
+        .lean();
+
+      // ✅ ADD THIS DEBUG LOG
+      console.log("📦 Found jobs:", mongoJobs.length);
+      mongoJobs.forEach((job) => {
+        console.log("  - Job:", job.jobId, "assignedTo:", job.assignedTo);
+      });
+
+      const jobs: ProcessingJob[] = [];
+      for (const mongoJob of mongoJobs) {
+        const fullJob = await this.getJobFromMongoDB(mongoJob.jobId);
+        if (fullJob) jobs.push(fullJob);
+      }
+
+      return jobs;
+    } catch (error) {
+      logger.error("Failed to get user assigned jobs", error as Error, {
+        userId,
+      });
+      throw new AppError(
+        "Failed to retrieve assigned jobs",
+        500,
+        "ASSIGNED_JOBS_FETCH_ERROR"
+      );
+    }
+  }
+
+  public async updateJobUserStatus(
+    jobId: string,
+    userId: string,
+    status: "downloaded" | "working" | "finished"
+  ): Promise<ProcessingJob | null> {
+    try {
+      console.log("🔄 updateJobUserStatus called");
+      console.log("  jobId:", jobId);
+      console.log("  userId:", userId);
+      console.log("  status:", status);
+      // Verify job is assigned to this user
+      const job = await ProcessingJobModel.findOne({
+        jobId,
+        assignedTo: new mongoose.Types.ObjectId(userId),
+      });
+
+      console.log("📦 Job found:", !!job);
+
+      if (!job) {
+        console.log("❌ Job not found - checking all jobs with this jobId...");
+        const anyJob = await ProcessingJobModel.findOne({ jobId });
+        console.log("  Job exists:", !!anyJob);
+        if (anyJob) {
+          console.log("  But assignedTo is:", anyJob.assignedTo);
+          console.log("  Expected userId:", userId);
+        }
+        throw new AppError(
+          "Job not found or not assigned to you",
+          404,
+          "JOB_NOT_FOUND"
+        );
+      }
+
+      console.log("✅ Job verified, continuing...");
+
+      // Get admin who created the job
+      const admin = await User.findById(job.userId);
+      if (!admin) {
+        throw new AppError("Admin not found", 404, "ADMIN_NOT_FOUND");
+      }
+
+      // Get user details for notification
+      const user = await User.findById(userId);
+      if (!user) {
+        throw new AppError("User not found", 404, "USER_NOT_FOUND");
+      }
+
+      const userName = user.getFullName();
+      const now = new Date();
+
+      // Update based on status
+      const updateData: any = { userStatus: status };
+      let notificationType: any;
+      let notificationMessage: string;
+
+      switch (status) {
+        case "downloaded":
+          updateData.downloadedAt = now;
+          notificationType = "job_downloaded";
+          notificationMessage = `${userName} downloaded Job #${jobId.slice(
+            0,
+            8
+          )}`;
+          break;
+        case "working":
+          updateData.workStartedAt = now;
+          notificationType = "job_working";
+          notificationMessage = `${userName} started working on Job #${jobId.slice(
+            0,
+            8
+          )}`;
+          break;
+        case "finished":
+          updateData.finishedAt = now;
+          notificationType = "job_finished";
+          notificationMessage = `${userName} finished Job #${jobId.slice(
+            0,
+            8
+          )}`;
+          break;
+      }
+
+      // Update job
+      await ProcessingJobModel.updateOne({ jobId }, { $set: updateData });
+
+      // Create notification for admin
+      await this.notificationService.createNotification({
+        recipientId: admin._id.toString(),
+        senderId: userId,
+        jobId,
+        type: notificationType,
+        message: notificationMessage,
+      });
+
+      // Update cache
+      const updatedJob = await this.getJobFromMongoDB(jobId);
+      if (updatedJob) {
+        this.jobs.set(jobId, updatedJob);
+        await this.redis.setex(
+          `job:${jobId}`,
+          604800,
+          JSON.stringify(updatedJob)
+        );
+      }
+
+      logger.info("Job user status updated", {
+        action: "job_status_updated",
+        jobId,
+        userId,
+        status,
+        notificationType,
+      });
+
+      return updatedJob;
+    } catch (error) {
+      logger.error("Failed to update job status", error as Error, {
+        jobId,
+        userId,
+        status,
+      });
+      throw error;
+    }
+  }
+
+  public async notifyDownload(jobId: string, userId: string): Promise<void> {
+    try {
+      await this.updateJobUserStatus(jobId, userId, "downloaded");
+    } catch (error) {
+      // Log but don't throw - download should still work
+      logger.error("Failed to notify download", error as Error, {
+        jobId,
+        userId,
+      });
     }
   }
 }

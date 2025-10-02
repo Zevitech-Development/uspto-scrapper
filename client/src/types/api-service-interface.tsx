@@ -29,6 +29,56 @@ export interface ProcessingJob {
   createdAt: string;
   completedAt?: string;
   errorMessage?: string;
+
+  assignedTo?: string;
+  userStatus?:
+    | "unassigned"
+    | "assigned"
+    | "downloaded"
+    | "working"
+    | "finished";
+  assignedAt?: string;
+  downloadedAt?: string;
+  workStartedAt?: string;
+  finishedAt?: string;
+}
+
+export interface Notification {
+  _id: string;
+  recipientId: string;
+  senderId: string;
+  jobId: string;
+  type: "job_assigned" | "job_downloaded" | "job_working" | "job_finished";
+  message: string;
+  read: boolean;
+  createdAt: string;
+}
+
+export interface NotificationsResponse {
+  notifications: Notification[];
+  total: number;
+  unreadCount: number;
+}
+
+export interface JobAssignment {
+  jobId: string;
+  assignedTo: string;
+  assignedUser: {
+    _id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+  } | null;
+  userStatus: string;
+  totalRecords: number;
+  processedRecords: number;
+  status: string;
+  assignedAt: string;
+  downloadedAt?: string;
+  workStartedAt?: string;
+  finishedAt?: string;
+  createdAt: string;
+  completedAt?: string;
 }
 
 export interface JobStatusResponse {

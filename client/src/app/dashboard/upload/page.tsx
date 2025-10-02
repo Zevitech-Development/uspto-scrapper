@@ -14,6 +14,7 @@ import {
 import ApiService from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout";
+import toast, { Toaster } from "react-hot-toast";
 
 interface UploadState {
   file: File | null;
@@ -129,16 +130,27 @@ export default function UploadPage() {
       );
 
       if (response.success) {
+        const jobId = response.data?.jobId;
+
         setUploadState((prev) => ({
           ...prev,
           success: `Upload successful! Processing ${response.data?.totalRecords} records.`,
           error: null,
         }));
 
-        // Redirect to jobs page after a short delay
-        setTimeout(() => {
-          router.push(`/dashboard/jobs?highlight=${response.data?.jobId}`);
-        }, 2000);
+        // ✅ WAIT FOR JOB TO BE INDEXED, THEN REDIRECT
+        setTimeout(async () => {
+          if (!jobId) return;
+          try {
+            await ApiService.getJobStatus(jobId);
+            router.push(`/dashboard/jobs?highlight=${jobId}`);
+          } catch (error) {
+            // If job not found yet, wait a bit more
+            setTimeout(() => {
+              router.push(`/dashboard/jobs?highlight=${jobId}`);
+            }, 1500);
+          }
+        }, 1000);
       }
     } catch (error) {
       setUploadState((prev) => ({
@@ -171,7 +183,18 @@ export default function UploadPage() {
       const response = await ApiService.processSerialNumbers(serialNumbers);
 
       if (response.success) {
-        router.push(`/dashboard/jobs?highlight=${response.data?.jobId}`);
+        const jobId = response.data?.jobId;
+        if (!jobId) return;
+        setTimeout(async () => {
+          try {
+            await ApiService.getJobStatus(jobId);
+            router.push(`/dashboard/jobs?highlight=${jobId}`);
+          } catch (error) {
+            setTimeout(() => {
+              router.push(`/dashboard/jobs?highlight=${jobId}`);
+            }, 1500);
+          }
+        }, 1000);
       }
     } catch (error) {
       setSerialInput((prev) => ({
@@ -193,6 +216,7 @@ export default function UploadPage() {
 
   return (
     <DashboardLayout title="Upload & Process">
+      <Toaster position="top-right" />
       <div className="space-y-8">
         {/* File Upload Section */}
         <div className="bg-white rounded-lg border border-gray-200 p-6">

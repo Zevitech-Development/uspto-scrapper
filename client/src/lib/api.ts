@@ -1,8 +1,11 @@
 import {
   ApiResponse,
   JobStatusResponse,
+  NotificationsResponse,
   ProcessingJob,
   TrademarkData,
+  Notification,
+  JobAssignment,
 } from "@/types/api-service-interface";
 
 const API_BASE_URL =
@@ -325,7 +328,140 @@ class ApiService {
       };
     }>(response);
   }
+
+  // ========== JOB ASSIGNMENT ENDPOINTS ==========
+
+  static async assignJobToUser(jobId: string, userId: string) {
+    const response = await fetch(`${API_BASE_URL}/admin/jobs/${jobId}/assign`, {
+      method: "POST",
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ userId }),
+    });
+    return this.handleResponse<ApiResponse>(response);
+  }
+
+  static async getJobAssignments() {
+    const response = await fetch(`${API_BASE_URL}/admin/jobs/assignments`, {
+      headers: this.getAuthHeaders(),
+    });
+    return this.handleResponse<
+      ApiResponse<{ assignments: any[]; count: number }>
+    >(response);
+  }
+
+  static async getMyAssignedJobs() {
+    const response = await fetch(`${API_BASE_URL}/user/jobs/assigned`, {
+      headers: this.getAuthHeaders(),
+    });
+    return this.handleResponse<
+      ApiResponse<{ jobs: ProcessingJob[]; count: number }>
+    >(response);
+  }
+
+  static async updateJobUserStatus(
+    jobId: string,
+    status: "downloaded" | "working" | "finished"
+  ) {
+    const response = await fetch(`${API_BASE_URL}/user/jobs/${jobId}/status`, {
+      method: "PATCH",
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ status }),
+    });
+    return this.handleResponse<ApiResponse>(response);
+  }
+
+  // ========== NOTIFICATION ENDPOINTS ==========
+
+  static async getNotifications(
+    unreadOnly: boolean = false,
+    limit: number = 50,
+    skip: number = 0
+  ) {
+    const response = await fetch(
+      `${API_BASE_URL}/notifications?unreadOnly=${unreadOnly}&limit=${limit}&skip=${skip}`,
+      {
+        headers: this.getAuthHeaders(),
+      }
+    );
+    return this.handleResponse<ApiResponse<NotificationsResponse>>(response);
+  }
+
+  static async getUnreadNotificationCount() {
+    const response = await fetch(`${API_BASE_URL}/notifications/unread-count`, {
+      headers: this.getAuthHeaders(),
+    });
+    return this.handleResponse<ApiResponse<{ count: number }>>(response);
+  }
+
+  static async markNotificationAsRead(notificationId: string) {
+    const response = await fetch(
+      `${API_BASE_URL}/notifications/${notificationId}/read`,
+      {
+        method: "PATCH",
+        headers: this.getAuthHeaders(),
+      }
+    );
+    return this.handleResponse<ApiResponse>(response);
+  }
+
+  static async markAllNotificationsAsRead() {
+    const response = await fetch(
+      `${API_BASE_URL}/notifications/mark-all-read`,
+      {
+        method: "PATCH",
+        headers: this.getAuthHeaders(),
+      }
+    );
+    return this.handleResponse<ApiResponse<{ markedCount: number }>>(response);
+  }
+
+  // ========== USER TIMELINE ENDPOINTS ==========
+
+  static async getUserTimeline(userId: string) {
+    const response = await fetch(
+      `${API_BASE_URL}/admin/user-timeline/${userId}`,
+      {
+        headers: this.getAuthHeaders(),
+      }
+    );
+    return this.handleResponse<
+      ApiResponse<{
+        user: {
+          id: string;
+          name: string;
+          email: string;
+        };
+        timeline: Array<{
+          jobId: string;
+          totalRecords: number;
+          assignedAt: string;
+          downloadedAt?: string;
+          workStartedAt?: string;
+          finishedAt?: string;
+          status: string;
+          downloadTime?: number;
+          workDuration?: number;
+          totalTime?: number;
+        }>;
+        stats: {
+          totalJobs: number;
+          completedJobs: number;
+          inProgressJobs: number;
+          avgCompletionTime: number;
+          fastestJob: number;
+        };
+      }>
+    >(response);
+  }
 }
 
 export default ApiService;
-export type { TrademarkData, ProcessingJob, JobStatusResponse };
+
+export type {
+  TrademarkData,
+  ProcessingJob,
+  JobStatusResponse,
+  Notification,
+  NotificationsResponse,
+  JobAssignment,
+};

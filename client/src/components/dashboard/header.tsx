@@ -4,9 +4,12 @@ import React, { useState } from "react";
 import { Menu, LogOut, ChevronDown } from "lucide-react";
 import { HeaderProps } from "@/types/dashboard";
 import { formatLastLogin, getInitials } from "@/lib/common-functions";
+import { NotificationBell } from "../notifications/notification-bell";
+import { NotificationDropdown } from "../notifications/notification-dropdown";
 
 export const Header = ({ user, onSidebarToggle, onLogout }: HeaderProps) => {
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   return (
     <header className="bg-white border-b border-gray-200 px-4 lg:px-6 py-4">
@@ -23,6 +26,19 @@ export const Header = ({ user, onSidebarToggle, onLogout }: HeaderProps) => {
         {/* Right side */}
         <div className="flex items-center space-x-4">
           {/* User menu */}
+          {user.role === "admin" && (
+            <div className="relative">
+              <NotificationBell
+                onNotificationClick={() =>
+                  setShowNotifications(!showNotifications)
+                }
+              />
+              <NotificationDropdown
+                isOpen={showNotifications}
+                onClose={() => setShowNotifications(false)}
+              />
+            </div>
+          )}
           <div className="relative">
             <button
               onClick={() => setShowUserMenu(!showUserMenu)}
