@@ -24,6 +24,7 @@ class Server {
 
   constructor() {
     this.app = express();
+    this.app.set("trust proxy", 1);
     this.setupMiddleware();
     this.setupRoutes();
     this.setupErrorHandling();
