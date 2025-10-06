@@ -1,4 +1,5 @@
 import { Document } from "mongoose";
+import { TrademarkData } from "./global-interface";
 
 export interface ITrademark extends Document {
   serialNumber: string;
@@ -37,4 +38,5 @@ export interface IProcessingJob extends Document {
       selfFiled: Number,
       hadAttorney: Number,
     },
-} 
+  results?: TrademarkData[],
+}

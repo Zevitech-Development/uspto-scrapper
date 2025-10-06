@@ -100,8 +100,6 @@ export default function JobsPage() {
               if (statusUpdate?.data) {
                 const jobData = statusUpdate.data;
 
-           
-
                 const updatedJob: ProcessingJob = {
                   ...job,
                   id: jobData.jobId,
@@ -529,34 +527,6 @@ export default function JobsPage() {
     <DashboardLayout title={user.role === "admin" ? "All Jobs" : "My Jobs"}>
       <Toaster position="top-right" />
       <div className="space-y-6">
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-start space-x-3">
-            <div className="flex-shrink-0">
-              <svg
-                className="w-5 h-5 text-blue-600 mt-0.5"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            </div>
-            <div className="flex-1">
-              <h3 className="text-sm font-semibold text-blue-900">
-                Self-Filed Trademarks Only
-              </h3>
-              <p className="text-sm text-blue-700 mt-1">
-                Results show only trademarks filed by owners without attorney
-                representation. Records with attorney involvement are
-                automatically filtered out during processing.
-              </p>
-            </div>
-          </div>
-        </div>
-
         <div className="bg-white rounded-lg border border-gray-200 p-1">
           <div className="flex flex-wrap gap-1">
             {statusFilters.map((filter) => (
@@ -701,14 +671,35 @@ export default function JobsPage() {
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
-                            {job.filteringStats ? (
+                            {job.status === "completed" && job.results ? (
                               <div className="space-y-1">
                                 <div className="flex items-center space-x-2">
                                   <span className="text-green-600 font-medium">
+                                    {job.results.length}
+                                  </span>
+                                  <span className="text-gray-400">
+                                    downloadable
+                                  </span>
+                                </div>
+                                {job.filteringStats && job.filteringStats.hadAttorney > 0 && (
+                                  <div className="flex items-center space-x-2">
+                                    <span className="text-orange-600 font-medium">
+                                      {job.filteringStats.hadAttorney}
+                                    </span>
+                                    <span className="text-gray-400">
+                                      filtered
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            ) : job.filteringStats ? (
+                              <div className="space-y-1">
+                                <div className="flex items-center space-x-2">
+                                  <span className="text-blue-600 font-medium">
                                     {job.filteringStats.selfFiled}
                                   </span>
                                   <span className="text-gray-400">
-                                    self-filed
+                                    processing
                                   </span>
                                 </div>
                                 {job.filteringStats.hadAttorney > 0 && (
@@ -947,10 +938,21 @@ export default function JobsPage() {
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
-                            {job.filteringStats ? (
+                            {job.status === "completed" && job.results ? (
                               <div className="text-xs">
                                 <div className="text-green-600 font-medium">
-                                  {job.filteringStats.selfFiled} kept
+                                  {job.results.length} downloadable
+                                </div>
+                                {job.filteringStats && job.filteringStats.hadAttorney > 0 && (
+                                  <div className="text-gray-500">
+                                    {job.filteringStats.hadAttorney} filtered
+                                  </div>
+                                )}
+                              </div>
+                            ) : job.filteringStats ? (
+                              <div className="text-xs">
+                                <div className="text-blue-600 font-medium">
+                                  {job.filteringStats.selfFiled} processing
                                 </div>
                                 {job.filteringStats.hadAttorney > 0 && (
                                   <div className="text-gray-500">

@@ -55,6 +55,22 @@ const processingJobSchema = new Schema<IProcessingJob>(
       selfFiled: Number,
       hadAttorney: Number,
     },
+    results: [{
+      serialNumber: String,
+      ownerName: String,
+      markText: String,
+      ownerPhone: String,
+      ownerEmail: String,
+      attorneyName: String,
+      abandonDate: String,
+      abandonReason: String,
+      filingDate: String,
+      status: {
+        type: String,
+        enum: ["success", "error", "not_found"],
+      },
+      errorMessage: String,
+    }],
   },
   { timestamps: true }
 );

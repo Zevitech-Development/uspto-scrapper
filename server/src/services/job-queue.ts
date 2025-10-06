@@ -787,6 +787,10 @@ export class JobQueueService {
           ...(updates.filteringStats && {
             filteringStats: updates.filteringStats,
           }),
+          // ✅ ADD: Save results array for accurate count display
+          ...(updates.results && {
+            results: updates.results,
+          }),
         };
 
         await ProcessingJobModel.updateOne({ jobId }, { $set: mongoUpdate });
@@ -1133,15 +1137,32 @@ export class JobQueueService {
       const mongoJob = await ProcessingJobModel.findOne({ jobId });
       if (!mongoJob) return null;
 
-      const trademarkResults = await Trademark.find({
-        serialNumber: { $in: mongoJob.serialNumbers },
-      });
-
-      return {
-        id: mongoJob.jobId,
-        serialNumbers: mongoJob.serialNumbers,
-        status: mongoJob.status as ProcessingJob["status"],
-        results: trademarkResults.map((t) => ({
+      // ✅ Use results from job record if available (for completed jobs with filtered results)
+      // Otherwise fall back to fetching from Trademark collection (for backward compatibility)
+      let results: TrademarkData[] = [];
+      
+      if (mongoJob.results && mongoJob.results.length > 0) {
+        // Use the filtered results stored in the job record
+        results = mongoJob.results.map((r) => ({
+          serialNumber: r.serialNumber || '',
+          ownerName: r.ownerName || null,
+          markText: r.markText || null,
+          ownerPhone: r.ownerPhone || null,
+          ownerEmail: r.ownerEmail || null,
+          attorneyName: r.attorneyName || null,
+          abandonDate: r.abandonDate || null,
+          abandonReason: r.abandonReason || null,
+          filingDate: r.filingDate || null,
+          status: r.status as TrademarkData["status"],
+          errorMessage: r.errorMessage,
+        }));
+      } else {
+        // Fallback to fetching from Trademark collection (backward compatibility)
+        const trademarkResults = await Trademark.find({
+          serialNumber: { $in: mongoJob.serialNumbers },
+        });
+        
+        results = trademarkResults.map((t) => ({
           serialNumber: t.serialNumber,
           ownerName: t.ownerName,
           markText: t.markText,
@@ -1153,7 +1174,14 @@ export class JobQueueService {
           filingDate: t.filingDate,
           status: t.status as TrademarkData["status"],
           errorMessage: t.errorMessage,
-        })),
+        }));
+      }
+
+      return {
+        id: mongoJob.jobId,
+        serialNumbers: mongoJob.serialNumbers,
+        status: mongoJob.status as ProcessingJob["status"],
+        results,
         totalRecords: mongoJob.totalRecords,
         processedRecords: mongoJob.processedRecords,
         createdAt: mongoJob.createdAt,
