@@ -174,22 +174,24 @@ export class TrademarkController {
         return;
       }
 
+
       const response: ApiResponse = {
         success: true,
         data: {
           jobId: job.id,
           status: job.status,
           progress: {
-            total: job.totalRecords,
-            processed: job.processedRecords,
-            percentage: Math.round(
-              (job.processedRecords / job.totalRecords) * 100
-            ),
+            total: job.totalRecords || 0,
+            processed: job.processedRecords || 0,
+            percentage: job.totalRecords > 0 ? Math.round(
+              ((job.processedRecords || 0) / job.totalRecords) * 100
+            ) : 0,
           },
           results: job.results,
           createdAt: job.createdAt,
           completedAt: job.completedAt,
           errorMessage: job.errorMessage,
+          filteringStats: job.filteringStats,
         },
         message: "Job status retrieved successfully",
       };
@@ -535,12 +537,20 @@ export class TrademarkController {
           jobs: jobs.map((job) => ({
             id: job.id,
             status: job.status,
+            progress: {
+              total: job.totalRecords || 0,
+              processed: job.processedRecords || 0,
+              percentage: job.totalRecords > 0 ? Math.round(
+                ((job.processedRecords || 0) / job.totalRecords) * 100
+              ) : 0,
+            },
             totalRecords: job.totalRecords,
             processedRecords: job.processedRecords,
             createdAt: job.createdAt,
             completedAt: job.completedAt,
             errorMessage: job.errorMessage,
             results: job.results,
+            filteringStats: job.filteringStats,
 
             assignedTo: job.assignedTo,
             userStatus: job.userStatus,

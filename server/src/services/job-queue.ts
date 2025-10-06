@@ -1344,7 +1344,7 @@ export class JobQueueService {
         .sort({ createdAt: -1 })
         .limit(100)
         .select(
-          "jobId assignedTo userStatus assignedAt downloadedAt workStartedAt finishedAt totalRecords processedRecords createdAt completedAt errorMessage"
+          "jobId assignedTo userStatus assignedAt downloadedAt workStartedAt finishedAt totalRecords processedRecords createdAt completedAt errorMessage filteringStats"
         )
         .lean();
 
@@ -1867,7 +1867,7 @@ export class JobQueueService {
         .sort({ assignedAt: -1 })
         .limit(100)
         .select(
-          "jobId assignedTo userStatus assignedAt downloadedAt workStartedAt finishedAt totalRecords processedRecords createdAt completedAt errorMessage"
+          "jobId assignedTo userStatus assignedAt downloadedAt workStartedAt finishedAt totalRecords processedRecords createdAt completedAt errorMessage filteringStats"
         )
         .lean();
 

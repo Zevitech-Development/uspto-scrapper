@@ -100,21 +100,32 @@ export default function JobsPage() {
               if (statusUpdate?.data) {
                 const jobData = statusUpdate.data;
 
+           
+
                 const updatedJob: ProcessingJob = {
                   ...job,
                   id: jobData.jobId,
                   status: jobData.status,
                   totalRecords: jobData.progress.total,
                   processedRecords: jobData.progress.processed,
+                  percentage: jobData.progress.percentage,
                   results: jobData.results || job.results,
                   createdAt: jobData.createdAt,
                   completedAt: jobData.completedAt,
                   errorMessage: jobData.errorMessage,
+                  filteringStats: jobData.filteringStats || job.filteringStats,
                 };
 
                 if (job.status !== updatedJob.status) {
                   console.log(
                     `Job ${job.id} status changed: ${job.status} → ${updatedJob.status}`
+                  );
+                }
+
+                // Log percentage changes specifically
+                if (job.percentage !== updatedJob.percentage) {
+                  console.log(
+                    `📊 Job ${job.id} percentage changed: ${job.percentage}% → ${updatedJob.percentage}%`
                   );
                 }
 
@@ -656,9 +667,38 @@ export default function JobsPage() {
                             {formatDate(job.createdAt)}
                           </td>
 
-                          {/* Records Count */}
+                          {/* Records Count with Progress */}
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {job.totalRecords}
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium">
+                                  {job.processedRecords || 0} /{" "}
+                                  {job.totalRecords}
+                                </span>
+                                {(job.status === "processing" ||
+                                  job.status === "pending") &&
+                                  job.percentage !== undefined && (
+                                    <span className="text-xs text-blue-600 font-medium">
+                                      {job.percentage}%
+                                    </span>
+                                  )}
+                              </div>
+                              {(job.status === "processing" ||
+                                job.status === "pending") &&
+                                job.percentage !== undefined && (
+                                  <div className="w-full bg-gray-200 rounded-full h-2">
+                                    <div
+                                      className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                      style={{ width: `${job.percentage}%` }}
+                                    ></div>
+                                  </div>
+                                )}
+                              {job.status === "completed" && (
+                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                  <div className="bg-green-600 h-2 rounded-full w-full"></div>
+                                </div>
+                              )}
+                            </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
                             {job.filteringStats ? (
@@ -873,9 +913,38 @@ export default function JobsPage() {
                             {job.assignedAt ? formatDate(job.assignedAt) : "-"}
                           </td>
 
-                          {/* Records */}
+                          {/* Records with Progress */}
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {job.totalRecords}
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium">
+                                  {job.processedRecords || 0} /{" "}
+                                  {job.totalRecords}
+                                </span>
+                                {(job.status === "processing" ||
+                                  job.status === "pending") &&
+                                  job.percentage !== undefined && (
+                                    <span className="text-xs text-blue-600 font-medium">
+                                      {job.percentage}%
+                                    </span>
+                                  )}
+                              </div>
+                              {(job.status === "processing" ||
+                                job.status === "pending") &&
+                                job.percentage !== undefined && (
+                                  <div className="w-full bg-gray-200 rounded-full h-2">
+                                    <div
+                                      className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                      style={{ width: `${job.percentage}%` }}
+                                    ></div>
+                                  </div>
+                                )}
+                              {job.status === "completed" && (
+                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                  <div className="bg-green-600 h-2 rounded-full w-full"></div>
+                                </div>
+                              )}
+                            </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
                             {job.filteringStats ? (

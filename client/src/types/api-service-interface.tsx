@@ -26,6 +26,7 @@ export interface ProcessingJob {
   results: TrademarkData[];
   totalRecords: number;
   processedRecords: number;
+  percentage?: number;
   createdAt: string;
   completedAt?: string;
   errorMessage?: string;
@@ -98,6 +99,11 @@ export interface JobStatusResponse {
   errorMessage?: string;
   createdAt: string;
   completedAt?: string;
+  filteringStats?: {
+    totalFetched: number;
+    selfFiled: number;
+    hadAttorney: number;
+  };
 }
 
 // User Management Types
