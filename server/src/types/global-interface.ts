@@ -11,7 +11,7 @@ export interface TrademarkData {
   abandonDate: string | null;
   abandonReason: string | null;
   filingDate: string | null;
-  status: "success" | "error" | "not_found";
+  status: "success" | "error" | "not_found" | "has_attorney";
   errorMessage?: string;
 }
 
@@ -121,7 +121,12 @@ export interface ProcessingJob {
   id: string;
   serialNumbers: string[];
   assignedTo?: string;
-  userStatus?: 'unassigned' | 'assigned' | 'downloaded' | 'working' | 'finished';
+  userStatus?:
+    | "unassigned"
+    | "assigned"
+    | "downloaded"
+    | "working"
+    | "finished";
   assignedAt?: Date;
   downloadedAt?: Date;
   workStartedAt?: Date;
@@ -133,6 +138,11 @@ export interface ProcessingJob {
   createdAt: Date;
   completedAt?: Date;
   errorMessage?: string;
+  filteringStats?: {
+    totalFetched: number;
+    selfFiled: number;
+    hadAttorney: number;
+  };
 }
 
 export interface ProcessTrademarkRequest {
@@ -206,6 +216,7 @@ export interface LogContext {
   serialNumber?: string;
   userId?: string;
   action?: string;
+  activeCount?: number;
   error?: string;
   url?: string;
   email?: string;
@@ -289,6 +300,8 @@ export interface LogContext {
   modified?: number;
   redis?: boolean;
   paused?: boolean;
+  returned?: number;
+  cutoffTime?: string;
   stats?: {
     waiting: number;
     active: number;
@@ -309,7 +322,9 @@ export interface LogContext {
       delayed: number;
     };
   };
-
+  selfFiled?: number;
+  waitingCount?: number;
+  hadAttorney?: number;
   newUserId?: string;
   newUserEmail?: string;
   targetUserId?: string;
@@ -318,6 +333,10 @@ export interface LogContext {
   responseTime?: number;
   processed?: number;
   total?: number;
+  filteredCount?: number;
+  selfFiledOnly?: number;
+  totalFetched?: number;
+  selfFiledRecords?: number;
   percentage?: number;
   totalRecords?: number;
   successCount?: number;

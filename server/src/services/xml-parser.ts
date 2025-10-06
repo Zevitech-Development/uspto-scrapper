@@ -54,24 +54,45 @@ export class XMLParser {
         );
       }
 
+      // ✅ ADD: Check for attorney representation FIRST
+      if (this.hasAttorneyRepresentation(trademark)) {
+        logger.debug("Trademark has attorney representation - filtering out", {
+          serialNumber,
+        });
+
+        return {
+          serialNumber,
+          ownerName: null,
+          markText: null,
+          ownerPhone: null,
+          ownerEmail: null,
+          attorneyName: this.extractAttorneyName(trademark), // Keep for logging
+          abandonDate: null,
+          abandonReason: null,
+          filingDate: null,
+          status: "has_attorney",
+          errorMessage:
+            "Trademark has attorney representation - not self-filed",
+        };
+      }
+
+      // ✅ CONTINUE: Only process self-filed trademarks
       const result: TrademarkData = {
         serialNumber,
         ownerName: this.extractOwnerName(trademark),
         markText: this.extractMarkText(trademark),
         ownerPhone: this.extractOwnerPhone(trademark),
         ownerEmail: this.extractOwnerEmail(trademark),
-        attorneyName: this.extractAttorneyName(trademark),
+        attorneyName: null, // Self-filed, no attorney
         abandonDate: this.extractAbandonDate(trademark),
         abandonReason: this.extractAbandonReason(trademark),
         filingDate: this.extractFilingDate(trademark),
         status: "success",
       };
 
-      logger.debug("Successfully extracted trademark data", {
+      logger.debug("Self-filed trademark extracted successfully", {
         serialNumber,
         hasOwnerName: !!result.ownerName,
-        hasAttorney: !!result.attorneyName,
-        isAbandoned: !!result.abandonDate,
       });
 
       return result;
@@ -316,5 +337,32 @@ export class XMLParser {
       errorMessage: "Trademark not found",
       markText: null,
     };
+  }
+
+  private hasAttorneyRepresentation(trademark: TrademarkInfo): boolean {
+    try {
+      const recordAttorney = trademark["ns2:RecordAttorney"]?.[0];
+      if (!recordAttorney) {
+        // No attorney section at all - self-filed
+        return false;
+      }
+
+      // Check if attorney name exists
+      const attorneyName =
+        recordAttorney["ns1:Contact"]?.[0]?.["ns1:Name"]?.[0]?.[
+          "ns1:PersonName"
+        ]?.[0]?.["ns1:PersonFullName"]?.[0];
+
+      // If attorney name exists and is not empty, has representation
+      if (attorneyName && attorneyName.trim().length > 0) {
+        return true;
+      }
+
+      // No attorney name - self-filed
+      return false;
+    } catch (error) {
+      // If we can't parse, assume no attorney
+      return false;
+    }
   }
 }

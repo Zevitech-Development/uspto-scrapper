@@ -1,11 +1,12 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { Eye, EyeOff, Building2, AlertCircle, Loader2 } from 'lucide-react';
-import { useAuth } from '@/hooks/useAuth';
-import { cn } from '@/lib/utils';
-
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { Eye, EyeOff, Building2, AlertCircle, Loader2 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { cn } from "@/lib/utils";
+import Image from "next/image";
+import Logo from "../../../public/images/logo-black.png";
 interface LoginFormData {
   email: string;
   password: string;
@@ -13,18 +14,18 @@ interface LoginFormData {
 
 interface LoginError {
   message: string;
-  field?: 'email' | 'password' | 'general';
+  field?: "email" | "password" | "general";
 }
 
 export default function LoginPage() {
   const router = useRouter();
   const { login, isAuthenticated, isLoading: authLoading } = useAuth();
-  
+
   const [formData, setFormData] = useState<LoginFormData>({
-    email: '',
-    password: ''
+    email: "",
+    password: "",
   });
-  
+
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<LoginError | null>(null);
@@ -38,7 +39,7 @@ export default function LoginPage() {
   // Redirect if already authenticated
   useEffect(() => {
     if (mounted && !authLoading && isAuthenticated) {
-      router.push('/dashboard');
+      router.push("/dashboard");
     }
   }, [mounted, authLoading, isAuthenticated, router]);
 
@@ -58,11 +59,11 @@ export default function LoginPage() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
-    
+
     // Clear field-specific errors when user starts typing
     if (error?.field === name) {
       setError(null);
@@ -71,22 +72,28 @@ export default function LoginPage() {
 
   const validateForm = (): boolean => {
     if (!formData.email) {
-      setError({ message: 'Email is required', field: 'email' });
+      setError({ message: "Email is required", field: "email" });
       return false;
     }
 
-    if (!formData.email.includes('@')) {
-      setError({ message: 'Please enter a valid email address', field: 'email' });
+    if (!formData.email.includes("@")) {
+      setError({
+        message: "Please enter a valid email address",
+        field: "email",
+      });
       return false;
     }
 
     if (!formData.password) {
-      setError({ message: 'Password is required', field: 'password' });
+      setError({ message: "Password is required", field: "password" });
       return false;
     }
 
     if (formData.password.length < 6) {
-      setError({ message: 'Password must be at least 6 characters', field: 'password' });
+      setError({
+        message: "Password must be at least 6 characters",
+        field: "password",
+      });
       return false;
     }
 
@@ -107,22 +114,23 @@ export default function LoginPage() {
       await login(formData);
       // Router will redirect automatically via useEffect
     } catch (err: any) {
-      console.error('Login error:', err);
-      
+      console.error("Login error:", err);
+
       // Handle different types of errors
-      let errorMessage = 'Login failed. Please try again.';
-      
+      let errorMessage = "Login failed. Please try again.";
+
       if (err.message) {
-        if (err.message.includes('Invalid email or password')) {
-          errorMessage = 'Invalid email or password. Please check your credentials.';
-        } else if (err.message.includes('Too many')) {
-          errorMessage = 'Too many login attempts. Please try again later.';
+        if (err.message.includes("Invalid email or password")) {
+          errorMessage =
+            "Invalid email or password. Please check your credentials.";
+        } else if (err.message.includes("Too many")) {
+          errorMessage = "Too many login attempts. Please try again later.";
         } else {
           errorMessage = err.message;
         }
       }
 
-      setError({ message: errorMessage, field: 'general' });
+      setError({ message: errorMessage, field: "general" });
     } finally {
       setIsLoading(false);
     }
@@ -135,8 +143,8 @@ export default function LoginPage() {
   // Pre-fill admin credentials for testing (remove in production)
   const fillAdminCredentials = () => {
     setFormData({
-      email: 'admin@uspto-tsdr.com',
-      password: 'admin123'
+      email: "admin@uspto-tsdr.com",
+      password: "admin123",
     });
     setError(null);
   };
@@ -144,20 +152,14 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <div className="max-w-md w-full">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center mx-auto mb-4">
-            <Building2 className="w-8 h-8 text-white" />
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back</h1>
-          <p className="text-gray-600">Sign in to your USPTO TSDR Dashboard</p>
-        </div>
-
         {/* Login Form */}
         <div className="bg-white rounded-xl shadow-lg p-8">
+          <div className="w-32 h-16 flex items-center justify-center mx-auto mb-4">
+            <Image src={Logo} alt="USPTO TSDR Logo" />
+          </div>
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* General Error */}
-            {error?.field === 'general' && (
+            {error?.field === "general" && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center space-x-3">
                 <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
                 <p className="text-red-700 text-sm">{error.message}</p>
@@ -166,7 +168,10 @@ export default function LoginPage() {
 
             {/* Email Field */}
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+              <label
+                htmlFor="email"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
                 Email Address
               </label>
               <input
@@ -178,15 +183,15 @@ export default function LoginPage() {
                 className={cn(
                   "w-full px-4 py-3 border rounded-lg transition-colors duration-200",
                   "focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500",
-                  error?.field === 'email' 
-                    ? "border-red-300 bg-red-50" 
+                  error?.field === "email"
+                    ? "border-red-300 bg-red-50"
                     : "border-gray-300 hover:border-gray-400"
                 )}
                 placeholder="Enter your email"
                 disabled={isLoading}
                 autoComplete="email"
               />
-              {error?.field === 'email' && (
+              {error?.field === "email" && (
                 <p className="mt-1 text-sm text-red-600 flex items-center">
                   <AlertCircle className="w-4 h-4 mr-1" />
                   {error.message}
@@ -196,12 +201,15 @@ export default function LoginPage() {
 
             {/* Password Field */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
                 Password
               </label>
               <div className="relative">
                 <input
-                  type={showPassword ? 'text' : 'password'}
+                  type={showPassword ? "text" : "password"}
                   id="password"
                   name="password"
                   value={formData.password}
@@ -209,8 +217,8 @@ export default function LoginPage() {
                   className={cn(
                     "w-full px-4 py-3 border rounded-lg pr-12 transition-colors duration-200",
                     "focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500",
-                    error?.field === 'password' 
-                      ? "border-red-300 bg-red-50" 
+                    error?.field === "password"
+                      ? "border-red-300 bg-red-50"
                       : "border-gray-300 hover:border-gray-400"
                   )}
                   placeholder="Enter your password"
@@ -230,7 +238,7 @@ export default function LoginPage() {
                   )}
                 </button>
               </div>
-              {error?.field === 'password' && (
+              {error?.field === "password" && (
                 <p className="mt-1 text-sm text-red-600 flex items-center">
                   <AlertCircle className="w-4 h-4 mr-1" />
                   {error.message}
@@ -247,7 +255,7 @@ export default function LoginPage() {
                 "focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2",
                 isLoading
                   ? "bg-gray-400 cursor-not-allowed"
-                  : "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transform hover:scale-[1.02]"
+                  : "bg-[#01C0FD] hover:bg-[#01A9E2] transform hover:scale-[1.02]"
               )}
             >
               {isLoading ? (
@@ -256,14 +264,16 @@ export default function LoginPage() {
                   <span>Signing In...</span>
                 </div>
               ) : (
-                'Sign In'
+                "Sign In"
               )}
             </button>
 
             {/* Development Helper */}
-            {process.env.NODE_ENV === 'development' && (
+            {process.env.NODE_ENV === "development" && (
               <div className="pt-4 border-t border-gray-200">
-                <p className="text-xs text-gray-500 mb-2 text-center">Development Mode</p>
+                <p className="text-xs text-gray-500 mb-2 text-center">
+                  Development Mode
+                </p>
                 <button
                   type="button"
                   onClick={fillAdminCredentials}
@@ -275,13 +285,6 @@ export default function LoginPage() {
               </div>
             )}
           </form>
-        </div>
-
-        {/* Footer */}
-        <div className="mt-8 text-center">
-          <p className="text-sm text-gray-600">
-            Need help? Contact your system administrator
-          </p>
         </div>
       </div>
     </div>

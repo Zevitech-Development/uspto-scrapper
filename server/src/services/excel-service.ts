@@ -279,38 +279,52 @@ export class ExcelService {
       });
 
       // Prepare data for Excel
-      const excelData = results.map((result) => ({
-        "Serial Number": result.serialNumber,
-        Mark: result.markText || "N/A",
-        "Owner Name": result.ownerName || "N/A",
-        "Owner Phone": result.ownerPhone || "N/A",
-        "Owner Email": result.ownerEmail || "N/A",
-        "Attorney Name": result.attorneyName || "N/A",
-        "Filing Date": result.filingDate || "N/A",
-        "Date of Abandon": result.abandonDate || "N/A",
-        "Abandon Reason": result.abandonReason || "N/A",
-        Status: result.status,
-        "Error Message": result.errorMessage || "",
-      }));
+       const excelData = results.map((result) => ({
+      "Serial Number": result.serialNumber,
+      Mark: result.markText || "N/A",
+      "Owner Name": result.ownerName || "N/A",
+      "Owner Phone": result.ownerPhone || "N/A",
+      "Owner Email": result.ownerEmail || "N/A",
+      "Filing Date": result.filingDate || "N/A",
+      "Date of Abandon": result.abandonDate || "N/A",
+      "Abandon Reason": result.abandonReason || "N/A",
+      "Self-Filed": "YES", // ✅ ADD: All results are self-filed
+      Status: result.status,
+      "Error Message": result.errorMessage || "",
+    }));
 
-      // Create workbook and worksheet
+     const summaryData = {
+      "Serial Number": "SUMMARY",
+      Mark: "",
+      "Owner Name": `Total Self-Filed Records: ${results.length}`,
+      "Owner Phone": "",
+      "Owner Email": `Success: ${results.filter(r => r.status === "success").length}`,
+      "Filing Date": "",
+      "Date of Abandon": "",
+      "Abandon Reason": "",
+      "Self-Filed": "",
+      Status: "",
+      "Error Message": "",
+    };
+        excelData.push(summaryData);
+
       const workbook = XLSX.utils.book_new();
       const worksheet = XLSX.utils.json_to_sheet(excelData);
 
       // Set column widths for better readability
-      const columnWidths = [
-        { wch: 15 }, // Serial Number
-        { wch: 20 }, // Mark Text
-        { wch: 30 }, // Owner Name
-        { wch: 15 }, // Owner Phone
-        { wch: 30 }, // Owner Email
-        { wch: 25 }, // Attorney Name
-        { wch: 12 }, // Filing Date
-        { wch: 12 }, // Abandon Date
-        { wch: 50 }, // Abandon Reason
-        { wch: 10 }, // Status
-        { wch: 30 }, // Error Message
-      ];
+     const columnWidths = [
+      { wch: 15 }, // Serial Number
+      { wch: 20 }, // Mark Text
+      { wch: 30 }, // Owner Name
+      { wch: 15 }, // Owner Phone
+      { wch: 30 }, // Owner Email
+      { wch: 12 }, // Filing Date
+      { wch: 12 }, // Abandon Date
+      { wch: 50 }, // Abandon Reason
+      { wch: 10 }, // Self-Filed
+      { wch: 10 }, // Status
+      { wch: 30 }, // Error Message
+    ];
 
       worksheet["!cols"] = columnWidths;
 

@@ -50,6 +50,11 @@ const processingJobSchema = new Schema<IProcessingJob>(
     createdAt: { type: Date, default: Date.now },
     completedAt: Date,
     errorMessage: String,
+    filteringStats: {
+      totalFetched: Number,
+      selfFiled: Number,
+      hadAttorney: Number,
+    },
   },
   { timestamps: true }
 );

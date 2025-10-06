@@ -15,7 +15,7 @@ export interface TrademarkData {
   abandonDate: string | null;
   abandonReason: string | null;
   filingDate: string | null;
-  status: "success" | "error" | "not_found";
+  status: "success" | "error" | "not_found" | "has_attorney";
   errorMessage?: string;
 }
 
@@ -41,6 +41,11 @@ export interface ProcessingJob {
   downloadedAt?: string;
   workStartedAt?: string;
   finishedAt?: string;
+   filteringStats?: {
+    totalFetched: number;
+    selfFiled: number;
+    hadAttorney: number;
+  };
 }
 
 export interface Notification {

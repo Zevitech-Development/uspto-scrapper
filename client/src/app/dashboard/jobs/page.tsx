@@ -436,20 +436,24 @@ export default function JobsPage() {
   };
 
   const handleRemoveJob = async (jobId: string) => {
-    if (!confirm("Are you sure you want to remove this job? This action cannot be undone.")) {
+    if (
+      !confirm(
+        "Are you sure you want to remove this job? This action cannot be undone."
+      )
+    ) {
       return;
     }
 
     try {
       const response = await ApiService.removeJob(jobId);
-      
+
       if (response.success) {
         // Remove job from local state immediately
         setState((prev) => ({
           ...prev,
           jobs: prev.jobs.filter((job) => job.id !== jobId),
         }));
-        
+
         toast.success("Job removed successfully!");
       }
     } catch (error) {
@@ -514,6 +518,34 @@ export default function JobsPage() {
     <DashboardLayout title={user.role === "admin" ? "All Jobs" : "My Jobs"}>
       <Toaster position="top-right" />
       <div className="space-y-6">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-start space-x-3">
+            <div className="flex-shrink-0">
+              <svg
+                className="w-5 h-5 text-blue-600 mt-0.5"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-blue-900">
+                Self-Filed Trademarks Only
+              </h3>
+              <p className="text-sm text-blue-700 mt-1">
+                Results show only trademarks filed by owners without attorney
+                representation. Records with attorney involvement are
+                automatically filtered out during processing.
+              </p>
+            </div>
+          </div>
+        </div>
+
         <div className="bg-white rounded-lg border border-gray-200 p-1">
           <div className="flex flex-wrap gap-1">
             {statusFilters.map((filter) => (
@@ -586,6 +618,9 @@ export default function JobsPage() {
                           Records
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Filtering
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Completed Date
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -624,6 +659,32 @@ export default function JobsPage() {
                           {/* Records Count */}
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {job.totalRecords}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            {job.filteringStats ? (
+                              <div className="space-y-1">
+                                <div className="flex items-center space-x-2">
+                                  <span className="text-green-600 font-medium">
+                                    {job.filteringStats.selfFiled}
+                                  </span>
+                                  <span className="text-gray-400">
+                                    self-filed
+                                  </span>
+                                </div>
+                                {job.filteringStats.hadAttorney > 0 && (
+                                  <div className="flex items-center space-x-2">
+                                    <span className="text-orange-600 font-medium">
+                                      {job.filteringStats.hadAttorney}
+                                    </span>
+                                    <span className="text-gray-400">
+                                      filtered
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
                           </td>
 
                           {/* Completed Date */}
@@ -815,6 +876,22 @@ export default function JobsPage() {
                           {/* Records */}
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {job.totalRecords}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            {job.filteringStats ? (
+                              <div className="text-xs">
+                                <div className="text-green-600 font-medium">
+                                  {job.filteringStats.selfFiled} kept
+                                </div>
+                                {job.filteringStats.hadAttorney > 0 && (
+                                  <div className="text-gray-500">
+                                    {job.filteringStats.hadAttorney} filtered
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
                           </td>
 
                           {/* Status */}

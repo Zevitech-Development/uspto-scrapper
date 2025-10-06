@@ -32,4 +32,9 @@ export interface IProcessingJob extends Document {
   createdAt: Date;
   completedAt?: Date;
   errorMessage?: string;
+  filteringStats: {
+      totalFetched: Number,
+      selfFiled: Number,
+      hadAttorney: Number,
+    },
 } 

@@ -247,7 +247,14 @@ export class USPTOService {
   public async fetchMultipleTrademarkData(
     serialNumbers: string[],
     onProgress?: (processed: number, total: number) => void
-  ): Promise<TrademarkData[]> {
+  ): Promise<{
+    results: TrademarkData[];
+    stats: {
+      totalFetched: number;
+      selfFiled: number;
+      hadAttorney: number;
+    };
+  }> {
     const results: TrademarkData[] = [];
     const total = serialNumbers.length;
 
@@ -263,12 +270,10 @@ export class USPTOService {
         const result = await this.fetchTrademarkData(serialNumber);
         results.push(result);
 
-        // Call progress callback if provided
         if (onProgress) {
           onProgress(i + 1, total);
         }
 
-        // Rate limiting: wait between requests to respect USPTO limits
         if (i < serialNumbers.length - 1) {
           await this.waitForRateLimit();
         }
@@ -279,7 +284,6 @@ export class USPTOService {
           total,
         });
 
-        // Add error result and continue
         results.push({
           serialNumber,
           ownerName: null,
@@ -296,15 +300,43 @@ export class USPTOService {
       }
     }
 
+    // ✅ Calculate statistics BEFORE filtering
+    const totalFetched = results.length;
+    const hadAttorney = results.filter(
+      (r) => r.status === "has_attorney"
+    ).length;
+    const selfFiledResults = results.filter((r) => r.status !== "has_attorney");
+
+    const successCount = selfFiledResults.filter(
+      (r) => r.status === "success"
+    ).length;
+    const errorCount = selfFiledResults.filter(
+      (r) => r.status === "error"
+    ).length;
+    const notFoundCount = selfFiledResults.filter(
+      (r) => r.status === "not_found"
+    ).length;
+
     logger.info("Completed batch trademark fetch", {
       action: "batch_fetch_complete",
       totalRecords: total,
-      successCount: results.filter((r) => r.status === "success").length,
-      errorCount: results.filter((r) => r.status === "error").length,
-      notFoundCount: results.filter((r) => r.status === "not_found").length,
+      totalFetched,
+      selfFiled: selfFiledResults.length,
+      hadAttorney,
+      successCount,
+      errorCount,
+      notFoundCount,
     });
 
-    return results;
+    // ✅ Return filtered results WITH stats
+    return {
+      results: selfFiledResults,
+      stats: {
+        totalFetched,
+        selfFiled: selfFiledResults.length,
+        hadAttorney,
+      },
+    };
   }
 
   private async waitForRateLimit(): Promise<void> {
