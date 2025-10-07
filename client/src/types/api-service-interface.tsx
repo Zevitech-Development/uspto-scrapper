@@ -42,11 +42,13 @@ export interface ProcessingJob {
   downloadedAt?: string;
   workStartedAt?: string;
   finishedAt?: string;
-   filteringStats?: {
+  filteringStats?: {
     totalFetched: number;
     selfFiled: number;
     hadAttorney: number;
   };
+  archived?: boolean;
+  archivedAt?: string;
 }
 
 export interface Notification {

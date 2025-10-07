@@ -461,6 +461,48 @@ class ApiService {
       }>
     >(response);
   }
+
+  // ========== ARCHIVE ENDPOINTS ==========
+
+  static async archiveJob(jobId: string) {
+    const response = await fetch(
+      `${API_BASE_URL}/admin/jobs/${jobId}/archive`,
+      {
+        method: "POST",
+        headers: this.getAuthHeaders(),
+      }
+    );
+    return this.handleResponse<ApiResponse>(response);
+  }
+
+  static async unarchiveJob(jobId: string) {
+    const response = await fetch(
+      `${API_BASE_URL}/admin/jobs/${jobId}/unarchive`,
+      {
+        method: "POST",
+        headers: this.getAuthHeaders(),
+      }
+    );
+    return this.handleResponse<ApiResponse>(response);
+  }
+
+  static async getArchivedJobs(): Promise<
+    ApiResponse<{
+      jobs: ProcessingJob[];
+      count: number;
+    }>
+  > {
+    const response = await fetch(`${API_BASE_URL}/admin/jobs/archived`, {
+      headers: this.getAuthHeaders(),
+    });
+
+    return this.handleResponse<
+      ApiResponse<{
+        jobs: ProcessingJob[];
+        count: number;
+      }>
+    >(response);
+  }
 }
 
 export default ApiService;

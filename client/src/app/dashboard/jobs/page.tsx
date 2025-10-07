@@ -15,6 +15,7 @@ import {
   Calendar,
   Loader2,
   Trash2,
+  Archive,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import ApiService, { ProcessingJob } from "@/lib/api";
@@ -523,6 +524,31 @@ export default function JobsPage() {
     return null;
   }
 
+  const handleArchiveJob = async (jobId: string) => {
+    if (
+      !confirm("Archive this job? You can restore it later from Archived Jobs.")
+    ) {
+      return;
+    }
+
+    try {
+      const response = await ApiService.archiveJob(jobId);
+
+      if (response.success) {
+        // Remove from current view
+        setState((prev) => ({
+          ...prev,
+          jobs: prev.jobs.filter((job) => job.id !== jobId),
+        }));
+
+        toast.success("Job archived successfully!");
+      }
+    } catch (error) {
+      console.error("Archive failed:", error);
+      toast.error("Failed to archive job. Please try again.");
+    }
+  };
+
   return (
     <DashboardLayout title={user.role === "admin" ? "All Jobs" : "My Jobs"}>
       <Toaster position="top-right" />
@@ -681,16 +707,17 @@ export default function JobsPage() {
                                     downloadable
                                   </span>
                                 </div>
-                                {job.filteringStats && job.filteringStats.hadAttorney > 0 && (
-                                  <div className="flex items-center space-x-2">
-                                    <span className="text-orange-600 font-medium">
-                                      {job.filteringStats.hadAttorney}
-                                    </span>
-                                    <span className="text-gray-400">
-                                      filtered
-                                    </span>
-                                  </div>
-                                )}
+                                {job.filteringStats &&
+                                  job.filteringStats.hadAttorney > 0 && (
+                                    <div className="flex items-center space-x-2">
+                                      <span className="text-orange-600 font-medium">
+                                        {job.filteringStats.hadAttorney}
+                                      </span>
+                                      <span className="text-gray-400">
+                                        filtered
+                                      </span>
+                                    </div>
+                                  )}
                               </div>
                             ) : job.filteringStats ? (
                               <div className="space-y-1">
@@ -823,6 +850,13 @@ export default function JobsPage() {
                                     <Download className="w-4 h-4" />
                                   </button>
                                   <button
+                                    onClick={() => handleArchiveJob(job.id)}
+                                    className="p-2 text-purple-600 hover:text-purple-700 rounded-full hover:bg-purple-50"
+                                    title="Archive Job"
+                                  >
+                                    <Archive className="w-4 h-4" />
+                                  </button>
+                                  <button
                                     onClick={() => handleRemoveJob(job.id)}
                                     className="p-2 text-red-600 hover:text-red-700 rounded-full hover:bg-red-50"
                                     title="Remove Job"
@@ -943,11 +977,12 @@ export default function JobsPage() {
                                 <div className="text-green-600 font-medium">
                                   {job.results.length} downloadable
                                 </div>
-                                {job.filteringStats && job.filteringStats.hadAttorney > 0 && (
-                                  <div className="text-gray-500">
-                                    {job.filteringStats.hadAttorney} filtered
-                                  </div>
-                                )}
+                                {job.filteringStats &&
+                                  job.filteringStats.hadAttorney > 0 && (
+                                    <div className="text-gray-500">
+                                      {job.filteringStats.hadAttorney} filtered
+                                    </div>
+                                  )}
                               </div>
                             ) : job.filteringStats ? (
                               <div className="text-xs">

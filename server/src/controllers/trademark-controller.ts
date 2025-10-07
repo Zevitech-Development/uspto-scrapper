@@ -174,7 +174,6 @@ export class TrademarkController {
         return;
       }
 
-
       const response: ApiResponse = {
         success: true,
         data: {
@@ -183,9 +182,12 @@ export class TrademarkController {
           progress: {
             total: job.totalRecords || 0,
             processed: job.processedRecords || 0,
-            percentage: job.totalRecords > 0 ? Math.round(
-              ((job.processedRecords || 0) / job.totalRecords) * 100
-            ) : 0,
+            percentage:
+              job.totalRecords > 0
+                ? Math.round(
+                    ((job.processedRecords || 0) / job.totalRecords) * 100
+                  )
+                : 0,
           },
           results: job.results,
           createdAt: job.createdAt,
@@ -540,9 +542,12 @@ export class TrademarkController {
             progress: {
               total: job.totalRecords || 0,
               processed: job.processedRecords || 0,
-              percentage: job.totalRecords > 0 ? Math.round(
-                ((job.processedRecords || 0) / job.totalRecords) * 100
-              ) : 0,
+              percentage:
+                job.totalRecords > 0
+                  ? Math.round(
+                      ((job.processedRecords || 0) / job.totalRecords) * 100
+                    )
+                  : 0,
             },
             totalRecords: job.totalRecords,
             processedRecords: job.processedRecords,
@@ -873,6 +878,102 @@ export class TrademarkController {
           },
         },
         message: "User timeline retrieved successfully",
+      };
+
+      res.json(response);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public archiveJob = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { jobId } = req.params;
+
+      if (!req.user) {
+        throw new AppError("Authentication required", 401, "NOT_AUTHENTICATED");
+      }
+
+      logger.info("Archiving job", {
+        action: "archive_job",
+        jobId,
+        userId: req.user.id,
+      });
+
+      const archivedJob = await this.jobQueueService.archiveJob(jobId);
+
+      if (!archivedJob) {
+        throw new AppError("Failed to archive job", 500, "ARCHIVE_FAILED");
+      }
+
+      const response: ApiResponse = {
+        success: true,
+        data: archivedJob,
+        message: "Job archived successfully",
+      };
+
+      res.json(response);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public unarchiveJob = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { jobId } = req.params;
+
+      if (!req.user) {
+        throw new AppError("Authentication required", 401, "NOT_AUTHENTICATED");
+      }
+
+      logger.info("Unarchiving job", {
+        action: "unarchive_job",
+        jobId,
+        userId: req.user.id,
+      });
+
+      const unarchivedJob = await this.jobQueueService.unarchiveJob(jobId);
+
+      if (!unarchivedJob) {
+        throw new AppError("Failed to unarchive job", 500, "UNARCHIVE_FAILED");
+      }
+
+      const response: ApiResponse = {
+        success: true,
+        data: unarchivedJob,
+        message: "Job restored successfully",
+      };
+
+      res.json(response);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public getArchivedJobs = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      if (!req.user) {
+        throw new AppError("Authentication required", 401, "NOT_AUTHENTICATED");
+      }
+
+      const jobs = await this.jobQueueService.getArchivedJobs();
+
+      const response: ApiResponse = {
+        success: true,
+        data: { jobs, count: jobs.length },
+        message: "Archived jobs retrieved successfully",
       };
 
       res.json(response);

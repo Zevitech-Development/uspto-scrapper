@@ -92,6 +92,22 @@ router.get(
   trademarkController.getUserTimeline
 );
 
+router.post(
+  "/admin/jobs/:jobId/archive",
+  AuthMiddleware.requireAdmin,
+  trademarkController.archiveJob
+);
+router.post(
+  "/admin/jobs/:jobId/unarchive",
+  AuthMiddleware.requireAdmin,
+  trademarkController.unarchiveJob
+);
+router.get(
+  "/admin/jobs/archived",
+  AuthMiddleware.requireAdmin,
+  trademarkController.getArchivedJobs
+);
+
 // User job routes (no rate limiting for assigned jobs)
 router.get("/user/jobs/assigned", trademarkController.getMyAssignedJobs);
 router.patch(

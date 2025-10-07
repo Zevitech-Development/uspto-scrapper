@@ -14,6 +14,7 @@ import {
   LogOut,
   Building2,
   X,
+  Archive,
 } from "lucide-react";
 import { MenuItem, SidebarProps } from "@/types/dashboard";
 
@@ -38,11 +39,17 @@ const getMenuItems = (userRole: "admin" | "user"): MenuItem[] => {
   if (userRole === "admin") {
     return [
       ...commonItems,
-       {
+      {
         id: "upload",
         label: "Upload & Process",
         icon: Upload,
         href: "/dashboard/upload",
+      },
+      {
+        id: "archived",
+        label: "Archived Jobs",
+        icon: Archive,
+        href: "/dashboard/archived-jobs",
       },
       {
         id: "analytics",
@@ -56,7 +63,7 @@ const getMenuItems = (userRole: "admin" | "user"): MenuItem[] => {
         icon: Users,
         href: "/dashboard/users",
       },
-     
+
       // {
       //   id: "settings",
       //   label: "System Settings",

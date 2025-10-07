@@ -1140,11 +1140,11 @@ export class JobQueueService {
       // ✅ Use results from job record if available (for completed jobs with filtered results)
       // Otherwise fall back to fetching from Trademark collection (for backward compatibility)
       let results: TrademarkData[] = [];
-      
+
       if (mongoJob.results && mongoJob.results.length > 0) {
         // Use the filtered results stored in the job record
         results = mongoJob.results.map((r) => ({
-          serialNumber: r.serialNumber || '',
+          serialNumber: r.serialNumber || "",
           ownerName: r.ownerName || null,
           markText: r.markText || null,
           ownerPhone: r.ownerPhone || null,
@@ -1161,7 +1161,7 @@ export class JobQueueService {
         const trademarkResults = await Trademark.find({
           serialNumber: { $in: mongoJob.serialNumbers },
         });
-        
+
         results = trademarkResults.map((t) => ({
           serialNumber: t.serialNumber,
           ownerName: t.ownerName,
@@ -1201,6 +1201,8 @@ export class JobQueueService {
               hadAttorney: Number(mongoJob.filteringStats.hadAttorney),
             }
           : undefined,
+        archived: mongoJob.archived, 
+        archivedAt: mongoJob.archivedAt,
       };
     } catch (error) {
       logger.error("Failed to get job from MongoDB", error as Error, { jobId });
@@ -1365,9 +1367,9 @@ export class JobQueueService {
     status: ProcessingJob["status"]
   ): Promise<ProcessingJob[]> {
     try {
-      // ✅ STEP 1: Always query MongoDB as source of truth
       const mongoJobs = await ProcessingJobModel.find({
         status: status,
+        archived: { $ne: true },
       })
         .sort({ createdAt: -1 })
         .limit(100)
@@ -2090,6 +2092,117 @@ export class JobQueueService {
         jobId,
         userId,
       });
+    }
+  }
+
+  public async archiveJob(jobId: string): Promise<ProcessingJob | null> {
+    try {
+      // Update job in MongoDB
+      const result = await ProcessingJobModel.findOneAndUpdate(
+        { jobId, status: "completed" }, // Only completed jobs can be archived
+        {
+          $set: {
+            archived: true,
+            archivedAt: new Date(),
+          },
+        },
+        { new: true }
+      );
+
+      if (!result) {
+        throw new AppError(
+          "Job not found or not completed",
+          404,
+          "JOB_NOT_FOUND"
+        );
+      }
+
+      // Update cache - remove from active jobs cache
+      this.jobs.delete(jobId);
+
+      // Update Redis cache
+      await this.redis.del(`job:${jobId}`);
+
+      logger.info("Job archived successfully", {
+        action: "job_archived",
+        jobId,
+      });
+
+      const job = await this.getJobFromMongoDB(jobId);
+      return job;
+    } catch (error) {
+      logger.error("Failed to archive job", error as Error, { jobId });
+      throw error;
+    }
+  }
+
+  public async unarchiveJob(jobId: string): Promise<ProcessingJob | null> {
+    try {
+      // Update job in MongoDB
+      const result = await ProcessingJobModel.findOneAndUpdate(
+        { jobId, archived: true },
+        {
+          $set: {
+            archived: false,
+            archivedAt: null,
+          },
+        },
+        { new: true }
+      );
+
+      if (!result) {
+        throw new AppError(
+          "Job not found or not archived",
+          404,
+          "JOB_NOT_FOUND"
+        );
+      }
+
+      logger.info("Job unarchived successfully", {
+        action: "job_unarchived",
+        jobId,
+      });
+
+      const job = await this.getJobFromMongoDB(jobId);
+      if (job) {
+        this.jobs.set(jobId, job);
+      }
+      return job;
+    } catch (error) {
+      logger.error("Failed to unarchive job", error as Error, { jobId });
+      throw error;
+    }
+  }
+
+  public async getArchivedJobs(): Promise<ProcessingJob[]> {
+    try {
+      const mongoJobs = await ProcessingJobModel.find({
+        archived: true,
+      })
+        .sort({ archivedAt: -1 })
+        .limit(100)
+        .select(
+          "jobId assignedTo userStatus assignedAt downloadedAt workStartedAt finishedAt totalRecords processedRecords createdAt completedAt errorMessage filteringStats archived archivedAt"
+        )
+        .lean();
+
+      const jobs: ProcessingJob[] = [];
+
+      for (const mongoJob of mongoJobs) {
+        const fullJob = await this.getJobFromMongoDB(mongoJob.jobId);
+        if (fullJob) {
+          jobs.push(fullJob);
+        }
+      }
+
+      return jobs.sort((a, b) => {
+        const aTime = a.archivedAt ? new Date(a.archivedAt).getTime() : 0;
+        const bTime = b.archivedAt ? new Date(b.archivedAt).getTime() : 0;
+        return bTime - aTime;
+      });
+    } catch (error) {
+      logger.error("Failed to get archived jobs", error as Error);
+      return [];
     }
   }
 }

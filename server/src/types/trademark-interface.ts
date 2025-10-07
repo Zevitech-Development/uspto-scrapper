@@ -39,4 +39,6 @@ export interface IProcessingJob extends Document {
       hadAttorney: Number,
     },
   results?: TrademarkData[],
+  archived?: boolean;    
+  archivedAt?: Date;
 }

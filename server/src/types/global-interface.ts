@@ -143,6 +143,8 @@ export interface ProcessingJob {
     selfFiled: number;
     hadAttorney: number;
   };
+  archived?: boolean;
+  archivedAt?: Date;
 }
 
 export interface ProcessTrademarkRequest {
