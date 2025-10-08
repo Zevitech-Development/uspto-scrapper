@@ -503,6 +503,166 @@ class ApiService {
       }>
     >(response);
   }
+
+  // ========== PIPELINE ENDPOINTS ==========
+
+  static async createPipelineLead(data: {
+    name: string;
+    phone: string;
+    email: string;
+    trademarkDetails: string;
+    abandonedSerialNo?: string;
+    paymentPlanInterest: boolean;
+    comments: string;
+    sourceJobId?: string;
+  }) {
+    const response = await fetch(`${API_BASE_URL}/pipeline/leads`, {
+      method: "POST",
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse<ApiResponse>(response);
+  }
+
+  static async getMyPipelineLeads(): Promise<
+    ApiResponse<{
+      leads: any[];
+      total: number;
+    }>
+  > {
+    const response = await fetch(`${API_BASE_URL}/pipeline/leads/my`, {
+      headers: this.getAuthHeaders(),
+    });
+
+    return this.handleResponse<
+      ApiResponse<{
+        leads: any[];
+        total: number;
+      }>
+    >(response);
+  }
+
+  static async getMyPipelineStats(): Promise<
+    ApiResponse<{
+      totalSubmitted: number;
+      converted: number;
+      conversionRate: number;
+      totalRevenue: number;
+    }>
+  > {
+    const response = await fetch(`${API_BASE_URL}/pipeline/stats/my`, {
+      headers: this.getAuthHeaders(),
+    });
+
+    return this.handleResponse<
+      ApiResponse<{
+        totalSubmitted: number;
+        converted: number;
+        conversionRate: number;
+        totalRevenue: number;
+      }>
+    >(response);
+  }
+
+  static async getTrademarkBySerial(serialNumber: string) {
+    const response = await fetch(
+      `${API_BASE_URL}/pipeline/trademark/${serialNumber}`,
+      {
+        headers: this.getAuthHeaders(),
+      }
+    );
+    return this.handleResponse<ApiResponse>(response);
+  }
+
+  // Admin endpoints
+  static async getAllPipelineLeads(params?: {
+    status?: string;
+    priority?: string;
+    archived?: boolean;
+  }): Promise<
+    ApiResponse<{
+      leads: any[];
+      total: number;
+    }>
+  > {
+    const queryParams = new URLSearchParams();
+    if (params?.status) queryParams.append("status", params.status);
+    if (params?.priority) queryParams.append("priority", params.priority);
+    if (params?.archived !== undefined)
+      queryParams.append("archived", params.archived.toString());
+
+    const response = await fetch(
+      `${API_BASE_URL}/pipeline/admin/leads?${queryParams}`,
+      {
+        headers: this.getAuthHeaders(),
+      }
+    );
+
+    return this.handleResponse<
+      ApiResponse<{
+        leads: any[];
+        total: number;
+      }>
+    >(response);
+  }
+
+  static async updatePipelineLead(leadId: string, data: any) {
+    const response = await fetch(
+      `${API_BASE_URL}/pipeline/admin/leads/${leadId}`,
+      {
+        method: "PUT",
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(data),
+      }
+    );
+    return this.handleResponse<ApiResponse>(response);
+  }
+
+  static async deletePipelineLead(leadId: string) {
+    const response = await fetch(
+      `${API_BASE_URL}/pipeline/admin/leads/${leadId}`,
+      {
+        method: "DELETE",
+        headers: this.getAuthHeaders(),
+      }
+    );
+    return this.handleResponse<ApiResponse>(response);
+  }
+
+  static async archivePipelineLead(leadId: string) {
+    const response = await fetch(
+      `${API_BASE_URL}/pipeline/admin/leads/${leadId}/archive`,
+      {
+        method: "POST",
+        headers: this.getAuthHeaders(),
+      }
+    );
+    return this.handleResponse<ApiResponse>(response);
+  }
+
+  static async getPipelineStats(): Promise<
+    ApiResponse<{
+      total: number;
+      byStatus: Record<string, number>;
+      byPriority: Record<string, number>;
+      conversionRate: number;
+      totalRevenue: number;
+    }>
+  > {
+    const response = await fetch(`${API_BASE_URL}/pipeline/admin/stats`, {
+      headers: this.getAuthHeaders(),
+    });
+
+    return this.handleResponse<
+      ApiResponse<{
+        total: number;
+        byStatus: Record<string, number>;
+        byPriority: Record<string, number>;
+        conversionRate: number;
+        totalRevenue: number;
+      }>
+    >(response);
+  }
 }
 
 export default ApiService;

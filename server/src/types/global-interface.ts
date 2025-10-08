@@ -186,6 +186,15 @@ export interface AppConfig {
   usptoRateLimitPerMinute: number;
   jwtSecret: string;
   jwtExpiresIn: string;
+  smtpHost: string;
+  smtpPort: number;
+  smtpSecure: boolean;
+  smtpUser: string;
+  smtpPassword: string;
+  smtpFromEmail: string;
+  smtpFromName: string;
+  adminNotificationEmails: string[];
+  frontendUrl: string;
 }
 
 export class AppError extends Error {
@@ -262,6 +271,8 @@ export interface LogContext {
   host?: string;
   database?: string;
   isActive?: boolean;
+  leadId?: string;
+  submittedBy?: string;
   // Extra fields for logging
   success?: boolean;
   waitingJobs?: {
@@ -325,6 +336,12 @@ export interface LogContext {
     };
   };
   selfFiled?: number;
+  name?: string;
+  adminId?: string;
+  adminCount?: number;
+  updatedBy?: string;
+  changes?: number;
+  to?: string;
   waitingCount?: number;
   hadAttorney?: number;
   newUserId?: string;
@@ -354,4 +371,8 @@ export interface LogContext {
   isAbandoned?: boolean;
   userName?: string;
   notificationType?: INotification["type"];
+  // Email service related fields
+  subject?: string;
+  messageId?: string;
+  maxRetries?: number;
 }

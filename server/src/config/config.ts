@@ -45,6 +45,18 @@ class ConfigManager {
       jwtSecret:
         process.env.JWT_SECRET || "fallback-secret-key-change-in-production",
       jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
+
+      smtpHost: process.env.SMTP_HOST || "smtp.gmail.com",
+      smtpPort: parseInt(process.env.SMTP_PORT || "587", 10),
+      smtpSecure: process.env.SMTP_SECURE === "true",
+      smtpUser: process.env.SMTP_USER || "",
+      smtpPassword: process.env.SMTP_PASSWORD || "",
+      smtpFromEmail: process.env.SMTP_FROM_EMAIL || "noreply@yourdomain.com",
+      smtpFromName: process.env.SMTP_FROM_NAME || "USPTO Pipeline System",
+      adminNotificationEmails: (process.env.ADMIN_NOTIFICATION_EMAILS || "")
+        .split(",")
+        .filter(Boolean),
+      frontendUrl: process.env.FRONTEND_URL || "http://localhost:3000",
     };
   }
 
@@ -87,6 +99,12 @@ class ConfigManager {
         "USPTO rate limit must be between 1 and 120 requests per minute",
         500,
         "CONFIG_INVALID_RATE_LIMIT"
+      );
+    }
+
+    if (this.config.adminNotificationEmails.length === 0) {
+      console.warn(
+        "⚠️  No admin notification emails configured. Pipeline notifications will not be sent."
       );
     }
   }

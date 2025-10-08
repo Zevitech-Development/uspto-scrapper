@@ -6,7 +6,7 @@ import { Router } from "express";
 import multer from "multer";
 import rateLimit from "express-rate-limit";
 import { NotificationController } from "../controllers/notification-controller";
-
+import pipelineRoutes from "./pipeline-route";
 // Configure multer for file uploads
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -50,6 +50,8 @@ router.get("/health", trademarkController.healthCheck);
 
 // Auth routes (have their own rate limiting)
 router.use("/auth", authRoutes);
+
+router.use("/pipeline", pipelineRoutes);
 
 // Authentication middleware for all routes below
 router.use(AuthMiddleware.authenticate);

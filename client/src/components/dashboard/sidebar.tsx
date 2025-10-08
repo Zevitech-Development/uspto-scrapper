@@ -15,6 +15,7 @@ import {
   Building2,
   X,
   Archive,
+  Target,
 } from "lucide-react";
 import { MenuItem, SidebarProps } from "@/types/dashboard";
 
@@ -27,7 +28,6 @@ const getMenuItems = (userRole: "admin" | "user"): MenuItem[] => {
       icon: BarChart3,
       href: "/dashboard",
     },
-
     {
       id: "jobs",
       label: userRole === "admin" ? "All Jobs" : "My Jobs",
@@ -52,6 +52,12 @@ const getMenuItems = (userRole: "admin" | "user"): MenuItem[] => {
         href: "/dashboard/archived-jobs",
       },
       {
+        id: "pipeline", // ✅ Admin Pipeline (CRM Dashboard)
+        label: "Pipeline",
+        icon: Target,
+        href: "/dashboard/admin/pipeline",
+      },
+      {
         id: "analytics",
         label: "Analytics",
         icon: TrendingUp,
@@ -63,24 +69,18 @@ const getMenuItems = (userRole: "admin" | "user"): MenuItem[] => {
         icon: Users,
         href: "/dashboard/users",
       },
-
-      // {
-      //   id: "settings",
-      //   label: "System Settings",
-      //   icon: Settings,
-      //   href: "/dashboard/settings",
-      // },
     ];
   }
 
+  // User menu items
   return [
     ...commonItems,
-    // {
-    //   id: "settings",
-    //   label: "Settings",
-    //   icon: Settings,
-    //   href: "/dashboard/settings",
-    // },
+    {
+      id: "pipeline", // ✅ User Pipeline (Add Lead Form)
+      label: "Pipeline",
+      icon: Target,
+      href: "/dashboard/pipeline",
+    },
   ];
 };
 
