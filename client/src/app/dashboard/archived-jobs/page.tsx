@@ -199,23 +199,6 @@ export default function ArchivedJobsPage() {
     <DashboardLayout title="Archived Jobs">
       <Toaster position="top-right" />
       <div className="space-y-6">
-        {/* Info Banner */}
-        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-          <div className="flex items-start space-x-3">
-            <Archive className="w-5 h-5 text-purple-600 mt-0.5" />
-            <div className="flex-1">
-              <h3 className="text-sm font-semibold text-purple-900">
-                Archived Jobs
-              </h3>
-              <p className="text-sm text-purple-700 mt-1">
-                These are completed jobs that have been archived to keep your
-                active jobs list clean. You can restore them back to the All
-                Jobs page or permanently delete them.
-              </p>
-            </div>
-          </div>
-        </div>
-
         {/* Stats Card */}
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <div className="flex items-center justify-between">
@@ -419,34 +402,6 @@ export default function ArchivedJobsPage() {
             </div>
           )}
         </div>
-
-        {/* Help Text */}
-        {state.jobs.length > 0 && (
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-            <div className="flex items-start space-x-3">
-              <FileText className="w-5 h-5 text-gray-500 mt-0.5" />
-              <div className="flex-1">
-                <h4 className="text-sm font-medium text-gray-900 mb-1">
-                  About Archived Jobs
-                </h4>
-                <ul className="text-sm text-gray-600 space-y-1">
-                  <li>
-                    • <strong>Restore:</strong> Move the job back to All Jobs
-                    page
-                  </li>
-                  <li>
-                    • <strong>Download:</strong> Download the job results as
-                    Excel
-                  </li>
-                  <li>
-                    • <strong>Delete:</strong> Permanently remove the job
-                    (cannot be undone)
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </DashboardLayout>
   );

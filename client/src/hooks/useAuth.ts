@@ -8,7 +8,8 @@ import {
   ApiResponse,
 } from "@/types/dashboard";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
 
 export const useAuth = (): AuthContextType => {
   const [user, setUser] = useState<User | null>(null);
